@@ -1,0 +1,40 @@
+{# FLOOR PLAN SLIDE - Left specs panel + right plan image area #}
+<div class="slide-label">SLIDE {{ slide_num }} &mdash; FLOOR PLAN</div>
+<div class="slide-wrapper slide-floorplan" id="slide{{ slide_num }}">
+  <div class="texture"></div>
+
+  <div class="header-bar">
+    <div class="logo-grid logo-zone" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
+      {% for i in range(20) %}<span style="border-color:rgba(255,255,255,0.5)"></span>{% endfor %}
+    </div>
+    <span class="bldg-name">{{ header_name }}</span>
+  </div>
+
+  <div class="left-panel">
+    <h2 contenteditable="true">{{ content.heading | default('Floor Plan') }}</h2>
+    <div class="size-label" contenteditable="true">{{ content.size_label | default('') }}</div>
+    <ul class="spec-list">
+      {% for spec in content.specs | default([]) %}
+      <li contenteditable="true">{{ spec }}</li>
+      {% endfor %}
+    </ul>
+    <div class="note" contenteditable="true">{{ content.note | default('') }}</div>
+  </div>
+
+  <div class="floor-plan-area">
+    <div class="plan-img img-placeholder" style="flex:1;">
+      <div class="ph-icon">&#128208;</div>
+      <div class="ph-label">Floor plan image &mdash; upload architectural drawing</div>
+    </div>
+    {% if content.legend %}
+    <div class="legend">
+      {% for item in content.legend %}
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:{% if item.colour == 'blue' %}#7AB3C4{% elif item.colour == 'yellow' %}#D4A843{% elif item.colour == 'pink' %}#D4849A{% elif item.colour == 'grey' %}#9A9A9A{% else %}#7AB3C4{% endif %};"></div>
+        <span contenteditable="true">{{ item.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>

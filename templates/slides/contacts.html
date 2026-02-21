@@ -1,0 +1,43 @@
+{# CONTACTS / BACK COVER SLIDE #}
+<div class="slide-label">SLIDE {{ slide_num }} &mdash; CONTACTS</div>
+<div class="slide-wrapper slide-contacts" id="slide{{ slide_num }}">
+  <div class="texture"></div>
+  <div class="splash-orb"></div>
+
+  <div class="cover-logo">
+    <div class="logo-grid logo-zone" data-logo-size="large" style="width:55px;height:68px;grid-template-columns: repeat(4, 10px); grid-template-rows: repeat(5, 10px); gap: 3px;">
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <h1 id="backTitle" contenteditable="true">{{ brochure_name | default('Building Name') }}</h1>
+  <div class="subtitle" contenteditable="true">{{ subtitle | default('L O C A T I O N') }}</div>
+
+  {% if content.agency %}
+  <div class="agency-logo" style="margin:32px 0;">
+    <div style="font-family:'Playfair Display',serif; font-size:36px; font-weight:700; color:white; opacity:0.9;" contenteditable="true">{{ content.agency }}</div>
+  </div>
+  {% endif %}
+
+  <div class="contacts-row">
+    {% for contact in content.contacts | default([]) %}
+    <div class="contact-card">
+      <div class="contact-divider"></div>
+      <div class="contact-name" contenteditable="true">{{ contact.name }}</div>
+      <div class="contact-email" contenteditable="true">{{ contact.email | default('') }}</div>
+      <div class="contact-phone" contenteditable="true">{{ contact.phone | default('') }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if content.legal_text %}
+  <div class="legal" contenteditable="true">{{ content.legal_text }}</div>
+  {% endif %}
+  {% if content.marketing_credit %}
+  <div class="marketing-note" contenteditable="true">{{ content.marketing_credit }}</div>
+  {% endif %}
+</div>

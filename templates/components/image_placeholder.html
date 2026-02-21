@@ -1,0 +1,10 @@
+{# Macro for image placeholder with upload capability #}
+{% macro image_placeholder(description="Upload image", icon="&#128247;", caption="", extra_classes="", extra_style="") %}
+<div class="img-placeholder {{ extra_classes }}" style="{{ extra_style }}">
+  <div class="ph-icon">{{ icon }}</div>
+  <div class="ph-label">{{ description }}</div>
+  {% if caption %}
+  <div class="caption" contenteditable="true">{{ caption }}</div>
+  {% endif %}
+</div>
+{% endmacro %}

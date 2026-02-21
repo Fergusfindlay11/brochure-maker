@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brochure Maker</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #B8714E;
+    --primary-dark: #9E5C3A;
+    --primary-light: #C98A6A;
+    --bg: #0f0b08;
+    --surface: #1a1410;
+    --surface-2: #231c14;
+    --border: rgba(184,113,78,0.2);
+    --border-hover: rgba(184,113,78,0.5);
+    --text: rgba(255,255,255,0.9);
+    --text-dim: rgba(255,255,255,0.5);
+    --text-dimmer: rgba(255,255,255,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    font-family: 'Jost', sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Header */
+  .header {
+    width: 100%;
+    padding: 32px 48px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-logo {
+    display: grid;
+    grid-template-columns: repeat(4, 8px);
+    grid-template-rows: repeat(5, 8px);
+    gap: 2px;
+  }
+  .header-logo span {
+    display: block;
+    border: 1.5px solid var(--primary);
+    opacity: 0.7;
+  }
+  .header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+  }
+  .header .subtitle {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-left: auto;
+  }
+
+  /* Main content */
+  .main {
+    width: 100%;
+    max-width: 1200px;
+    padding: 48px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+  }
+
+  /* Upload zone */
+  .upload-section {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .section-title {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 60px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: var(--surface);
+    position: relative;
+    min-height: 320px;
+  }
+  .upload-zone:hover {
+    border-color: var(--primary);
+    background: rgba(184,113,78,0.05);
+  }
+  .upload-zone.drag-over {
+    border-color: var(--primary);
+    background: rgba(184,113,78,0.12);
+    transform: scale(1.01);
+  }
+  .upload-zone.processing {
+    pointer-events: none;
+    border-color: var(--primary-light);
+  }
+  .upload-icon {
+    font-size: 48px;
+    opacity: 0.4;
+  }
+  .upload-text {
+    font-size: 16px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.6;
+  }
+  .upload-text strong {
+    color: var(--primary);
+    font-weight: 500;
+  }
+  .upload-hint {
+    font-size: 11px;
+    color: var(--text-dimmer);
+    letter-spacing: 0.06em;
+  }
+  #fileInput { display: none; }
+
+  /* Processing state */
+  .processing-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15,11,8,0.92);
+    border-radius: 12px;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    z-index: 10;
+  }
+  .processing-overlay.active { display: flex; }
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 2.5px solid rgba(255,255,255,0.1);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .processing-status {
+    font-size: 13px;
+    color: var(--text-dim);
+    text-align: center;
+    max-width: 280px;
+    line-height: 1.5;
+  }
+  .processing-step {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--primary);
+    text-transform: uppercase;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    width: 240px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 2px;
+    transition: width 0.5s ease;
+    width: 0%;
+  }
+
+  /* Projects & Templates list */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .list-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .project-card, .template-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .project-card:hover, .template-card:hover {
+    border-color: var(--border-hover);
+    background: var(--surface-2);
+  }
+  .card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .project-card .card-icon { background: rgba(184,113,78,0.15); }
+  .template-card .card-icon { background: rgba(107,76,138,0.15); }
+  .card-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .card-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-meta {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    margin-top: 3px;
+  }
+  .card-status {
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .status-complete { background: rgba(76,175,80,0.15); color: #66BB6A; }
+  .status-processing { background: rgba(255,183,77,0.15); color: #FFB74D; }
+  .status-error { background: rgba(239,83,80,0.15); color: #EF5350; }
+  .card-actions {
+    display: flex;
+    gap: 6px;
+  }
+  .card-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.5);
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: 'Jost', sans-serif;
+    letter-spacing: 0.06em;
+    transition: all 0.15s;
+  }
+  .card-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+  .card-btn.danger:hover { background: rgba(239,83,80,0.2); color: #EF5350; border-color: rgba(239,83,80,0.3); }
+  .card-btn.primary {
+    background: rgba(184,113,78,0.2);
+    border-color: rgba(184,113,78,0.4);
+    color: var(--primary-light);
+  }
+  .card-btn.primary:hover { background: rgba(184,113,78,0.35); color: white; }
+
+  .empty-state {
+    padding: 32px;
+    text-align: center;
+    color: var(--text-dimmer);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    border: 1px dashed rgba(255,255,255,0.1);
+    border-radius: 8px;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: auto;
+    padding: 24px 48px;
+    width: 100%;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .footer-text {
+    font-size: 10px;
+    color: var(--text-dimmer);
+    letter-spacing: 0.08em;
+  }
+  .footer-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+  }
+
+  /* Toast notifications */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-hover);
+    border-radius: 8px;
+    padding: 14px 20px;
+    font-size: 13px;
+    color: var(--text);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    z-index: 10000;
+    display: none;
+    max-width: 380px;
+  }
+  .toast.show { display: block; animation: slideUp 0.3s ease; }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .toast a { color: var(--primary-light); text-decoration: none; font-weight: 500; }
+  .toast a:hover { text-decoration: underline; }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-logo">
+    <span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span>
+  </div>
+  <h1>Brochure Maker</h1>
+  <div class="subtitle">PDF &rarr; Interactive HTML</div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+  <!-- Upload Section -->
+  <div class="upload-section">
+    <div class="section-title">Upload Brochure</div>
+    <div class="upload-zone" id="uploadZone">
+      <div class="upload-icon">&#128196;</div>
+      <div class="upload-text">
+        <strong>Drop a PDF brochure here</strong><br>
+        or click to browse
+      </div>
+      <div class="upload-hint">PDF files up to 50MB &mdash; AI will analyse and generate an interactive version</div>
+      <input type="file" id="fileInput" accept=".pdf">
+
+      <!-- Processing overlay -->
+      <div class="processing-overlay" id="processingOverlay">
+        <div class="spinner"></div>
+        <div class="processing-step" id="processingStep">Uploading</div>
+        <div class="processing-status" id="processingStatus">Uploading your PDF brochure...</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Projects & Templates Sidebar -->
+  <div class="sidebar">
+    <!-- Recent Projects -->
+    <div class="list-section">
+      <div class="section-title">Recent Projects</div>
+      <div id="projectsList">
+        <div class="empty-state">No projects yet. Upload a PDF to get started.</div>
+      </div>
+    </div>
+
+    <!-- Saved Templates -->
+    <div class="list-section">
+      <div class="section-title">Saved Templates</div>
+      <div id="templatesList">
+        <div class="empty-state">No templates saved. Create one from a completed brochure.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <div class="footer-text">Brochure Maker v1.0</div>
+  <div class="footer-dot"></div>
+  <div class="footer-text">Powered by Claude Sonnet via OpenRouter</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  const uploadZone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('fileInput');
+  const processingOverlay = document.getElementById('processingOverlay');
+  const processingStep = document.getElementById('processingStep');
+  const processingStatus = document.getElementById('processingStatus');
+  const progressFill = document.getElementById('progressFill');
+  const projectsList = document.getElementById('projectsList');
+  const templatesList = document.getElementById('templatesList');
+  const toast = document.getElementById('toast');
+
+  // ── Upload handling ──
+  uploadZone.addEventListener('click', (e) => {
+    if (e.target.closest('.processing-overlay')) return;
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) handleUpload(e.target.files[0]);
+  });
+
+  uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+  });
+  uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('drag-over');
+  });
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length && files[0].type === 'application/pdf') {
+      handleUpload(files[0]);
+    } else {
+      showToast('Please drop a PDF file.');
+    }
+  });
+
+  async function handleUpload(file) {
+    processingOverlay.classList.add('active');
+    uploadZone.classList.add('processing');
+    updateProgress('Uploading', 'Uploading your PDF brochure...', 10);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Upload failed');
+      }
+
+      const projectId = data.project_id;
+      updateProgress('Processing', 'Extracting content from PDF...', 25);
+
+      // Poll for status
+      pollStatus(projectId);
+
+    } catch (err) {
+      updateProgress('Error', err.message, 0);
+      setTimeout(() => {
+        processingOverlay.classList.remove('active');
+        uploadZone.classList.remove('processing');
+      }, 3000);
+    }
+  }
+
+  function pollStatus(projectId) {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/status/poll`);
+        const data = await res.json();
+
+        switch (data.status) {
+          case 'extracting':
+            updateProgress('Extracting', data.message, 30);
+            break;
+          case 'analysing':
+            updateProgress('AI Analysis', data.message, 55);
+            break;
+          case 'generating':
+            updateProgress('Generating', data.message, 80);
+            break;
+          case 'complete':
+            updateProgress('Complete', 'Your brochure is ready!', 100);
+            clearInterval(interval);
+            setTimeout(() => {
+              processingOverlay.classList.remove('active');
+              uploadZone.classList.remove('processing');
+              // Redirect to the brochure
+              window.open(data.brochure_url, '_blank');
+              loadProjects();
+            }, 1200);
+            break;
+          case 'error':
+            updateProgress('Error', data.message, 0);
+            clearInterval(interval);
+            setTimeout(() => {
+              processingOverlay.classList.remove('active');
+              uploadZone.classList.remove('processing');
+            }, 5000);
+            break;
+        }
+      } catch (err) {
+        // Continue polling
+      }
+    }, 2000);
+  }
+
+  function updateProgress(step, message, pct) {
+    processingStep.textContent = step;
+    processingStatus.textContent = message;
+    progressFill.style.width = pct + '%';
+  }
+
+  // ── Load projects ──
+  async function loadProjects() {
+    try {
+      const res = await fetch('/api/projects');
+      const data = await res.json();
+
+      if (!data.projects || data.projects.length === 0) {
+        projectsList.innerHTML = '<div class="empty-state">No projects yet. Upload a PDF to get started.</div>';
+        return;
+      }
+
+      projectsList.innerHTML = data.projects.map(p => `
+        <div class="project-card" data-id="${p.id}">
+          <div class="card-icon">&#128196;</div>
+          <div class="card-info">
+            <div class="card-name">${escapeHtml(p.name)}</div>
+            <div class="card-meta">ID: ${p.id}</div>
+          </div>
+          <span class="card-status ${p.status === 'complete' ? 'status-complete' : p.status === 'error' ? 'status-error' : 'status-processing'}">${p.status}</span>
+          <div class="card-actions">
+            ${p.has_brochure ? `<button class="card-btn primary" onclick="window.open('/api/projects/${p.id}/brochure','_blank');event.stopPropagation();">Open</button>` : ''}
+            ${p.has_brochure ? `<button class="card-btn" onclick="saveAsTemplate('${p.id}','${escapeHtml(p.name)}');event.stopPropagation();">Save Template</button>` : ''}
+            <button class="card-btn danger" onclick="deleteProject('${p.id}');event.stopPropagation();">Delete</button>
+          </div>
+        </div>
+      `).join('');
+
+    } catch (err) {
+      projectsList.innerHTML = '<div class="empty-state">Failed to load projects.</div>';
+    }
+  }
+
+  // ── Load templates ──
+  async function loadTemplates() {
+    try {
+      const res = await fetch('/api/templates');
+      const data = await res.json();
+
+      if (!data.templates || data.templates.length === 0) {
+        templatesList.innerHTML = '<div class="empty-state">No templates saved. Create one from a completed brochure.</div>';
+        return;
+      }
+
+      templatesList.innerHTML = data.templates.map(t => `
+        <div class="template-card">
+          <div class="card-icon" style="background:${t.colour_primary}22; color:${t.colour_primary};">&#9648;</div>
+          <div class="card-info">
+            <div class="card-name">${escapeHtml(t.name)}</div>
+            <div class="card-meta">${t.slide_count} slides</div>
+          </div>
+          <div class="card-actions">
+            <button class="card-btn danger" onclick="deleteTemplateAction('${escapeHtml(t.dir_name)}');event.stopPropagation();">Delete</button>
+          </div>
+        </div>
+      `).join('');
+
+    } catch (err) {
+      templatesList.innerHTML = '<div class="empty-state">Failed to load templates.</div>';
+    }
+  }
+
+  // ── Actions ──
+  window.deleteProject = async function(id) {
+    if (!confirm('Delete this project? This cannot be undone.')) return;
+    try {
+      await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      loadProjects();
+      showToast('Project deleted.');
+    } catch (err) {
+      showToast('Failed to delete project.');
+    }
+  };
+
+  window.saveAsTemplate = async function(projectId, name) {
+    const templateName = prompt('Template name:', name);
+    if (!templateName) return;
+
+    const formData = new FormData();
+    formData.append('name', templateName);
+    formData.append('project_id', projectId);
+
+    try {
+      const res = await fetch('/api/templates/save', { method: 'POST', body: formData });
+      if (res.ok) {
+        showToast(`Template "${templateName}" saved.`);
+        loadTemplates();
+      } else {
+        showToast('Failed to save template.');
+      }
+    } catch (err) {
+      showToast('Failed to save template.');
+    }
+  };
+
+  window.deleteTemplateAction = async function(dirName) {
+    if (!confirm('Delete this template?')) return;
+    try {
+      await fetch(`/api/templates/${dirName}`, { method: 'DELETE' });
+      loadTemplates();
+      showToast('Template deleted.');
+    } catch (err) {
+      showToast('Failed to delete template.');
+    }
+  };
+
+  // ── Helpers ──
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 4000);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ── Init ──
+  loadProjects();
+  loadTemplates();
+})();
+</script>
+
+</body>
+</html>

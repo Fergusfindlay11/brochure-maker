@@ -1,0 +1,38 @@
+{# TEXT AND PHOTOS SLIDE - Left text panel + right photo grid #}
+<div class="slide-label">SLIDE {{ slide_num }} &mdash; {{ content.heading | default('ABOUT') | upper }}</div>
+<div class="slide-wrapper slide-text-photos" id="slide{{ slide_num }}">
+  <div class="texture"></div>
+
+  <div class="header-bar">
+    <div class="logo-grid logo-zone" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
+      {% for i in range(20) %}<span style="border-color:rgba(255,255,255,0.5)"></span>{% endfor %}
+    </div>
+    <span class="bldg-name">{{ header_name }}</span>
+  </div>
+
+  <!-- Left text panel -->
+  <div class="left-panel">
+    <h2 contenteditable="true">{{ content.heading | default('About') }}</h2>
+    <p contenteditable="true">{{ content.body_text | default('Description text goes here.') }}</p>
+  </div>
+
+  <!-- Top right - main photo -->
+  <div class="img-placeholder" style="grid-column:2; grid-row:1; position:relative;">
+    <div class="ph-icon">&#127963;</div>
+    <div class="ph-label">{{ (content.images[0].description) if content.images and content.images|length > 0 else 'Building exterior photo' }}</div>
+  </div>
+
+  <!-- Bottom right - two photos -->
+  <div class="bottom-row">
+    <div class="img-placeholder img-bl" style="position:relative;">
+      <div class="ph-icon">&#129681;</div>
+      <div class="ph-label">{{ (content.images[1].description) if content.images and content.images|length > 1 else 'Interior workspace photo' }}</div>
+      <div class="caption" contenteditable="true">{{ (content.images[1].caption) if content.images and content.images|length > 1 else 'Workspace' }}</div>
+    </div>
+    <div class="img-placeholder img-br" style="position:relative;">
+      <div class="ph-icon">&#128715;</div>
+      <div class="ph-label">{{ (content.images[2].description) if content.images and content.images|length > 2 else 'Breakout area photo' }}</div>
+      <div class="caption" contenteditable="true">{{ (content.images[2].caption) if content.images and content.images|length > 2 else 'Breakout area' }}</div>
+    </div>
+  </div>
+</div>

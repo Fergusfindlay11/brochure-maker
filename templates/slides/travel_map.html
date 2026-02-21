@@ -1,0 +1,42 @@
+{# TRAVEL TIMES SLIDE - Transport connections with tube line dots #}
+<div class="slide-label">SLIDE {{ slide_num }} &mdash; TRAVEL TIMES</div>
+<div class="slide-wrapper slide-travel" id="slide{{ slide_num }}">
+  <div class="texture"></div>
+
+  <div class="header-bar">
+    <div class="logo-grid logo-zone" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
+      {% for i in range(20) %}<span style="border-color:rgba(255,255,255,0.5)"></span>{% endfor %}
+    </div>
+    <span class="bldg-name">{{ header_name }}</span>
+  </div>
+
+  <div class="left-panel">
+    <h2 contenteditable="true">{{ content.heading | default('Travel times') }}</h2>
+
+    <div id="stationList">
+      {% for station in content.stations | default([]) %}
+      <div class="travel-route" data-station>
+        <button class="route-delete-btn" title="Remove station">&#10005;</button>
+        <div class="route-name" contenteditable="true">{{ station.name }}{% if station.time %} - {{ station.time }}{% endif %}</div>
+        <div class="transport-dots">
+          {% for line_id in station.lines | default([]) %}
+          <div class="t-dot {{ line_id }}" data-line="{{ line_id }}" title="{{ line_id | capitalize }}"></div>
+          {% endfor %}
+          <div class="add-line-btn" title="Add line">+</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <button class="tube-add-btn" id="addStationBtn">+ Add station</button>
+
+    {% if content.note %}
+    <div class="note" contenteditable="true">{{ content.note }}</div>
+    {% endif %}
+  </div>
+
+  <div class="map-area img-placeholder" style="position:relative;">
+    <div class="ph-icon">&#128506;</div>
+    <div class="ph-label">Area map &mdash; upload local map image</div>
+  </div>
+</div>

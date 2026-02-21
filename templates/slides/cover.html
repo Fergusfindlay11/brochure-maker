@@ -1,0 +1,21 @@
+{# COVER SLIDE - Title page with building name, subtitle, tagline #}
+<div class="slide-label">SLIDE {{ slide_num }} &mdash; COVER</div>
+<div class="slide-wrapper slide-cover" id="slide{{ slide_num }}">
+  <div class="texture"></div>
+  <div class="splash-orb"></div>
+
+  <div class="cover-logo">
+    <div class="logo-grid logo-zone" data-logo-size="large" style="width:55px;height:68px;grid-template-columns: repeat(4, 10px); grid-template-rows: repeat(5, 10px); gap: 3px;">
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <h1 id="coverTitle" contenteditable="true">{{ content.heading | default('Building Name') }}</h1>
+  <div class="subtitle" id="coverSubtitle" contenteditable="true">{{ content.subheading | default('L O C A T I O N') }}</div>
+
+  <div class="tagline" contenteditable="true">{{ content.tagline | default('') }}</div>
+</div>

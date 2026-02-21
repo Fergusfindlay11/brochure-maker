@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ page_title | default(brochure_name + ' — ' + location) }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: {{ colour_scheme.primary | default('#B8714E') }};
+    --primary-dark: {{ colour_scheme.primary_dark | default('#9E5C3A') }};
+    --primary-light: {{ colour_scheme.primary_light | default('#C98A6A') }};
+    --cream: {{ colour_scheme.background | default('#F5EDE5') }};
+    --white: #FFFFFF;
+    --text-dark: {{ colour_scheme.text_dark | default('#2A1810') }};
+    --slide-w: 1200px;
+    --slide-h: 750px;
+  }
+{{ css_content }}
+</style>
+</head>
+<body>
+{% if project_id %}
+<script>window.__PROJECT_ID__ = "{{ project_id }}";</script>
+{% endif %}
+
+{# Navigation bar #}
+{% include 'components/nav_bar.html' %}
+
+{# Settings panel #}
+{% include 'components/settings_panel.html' %}
+
+{# Icon picker overlay #}
+{% include 'components/icon_picker.html' %}
+
+{# Line picker overlay #}
+{% include 'components/line_picker.html' %}
+
+{# PDF export overlay #}
+{% include 'components/pdf_overlay.html' %}
+
+{# Render each slide #}
+{% for slide in slides %}
+  {% if slide.type == 'cover' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/cover.html' %}
+    {% endwith %}
+  {% elif slide.type == 'text_and_photos' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/text_and_photos.html' %}
+    {% endwith %}
+  {% elif slide.type == 'highlights_grid' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/highlights_grid.html' %}
+    {% endwith %}
+  {% elif slide.type == 'photo_gallery' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/photo_gallery.html' %}
+    {% endwith %}
+  {% elif slide.type == 'floor_plan' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/floor_plan.html' %}
+    {% endwith %}
+  {% elif slide.type == 'services_grid' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/services_grid.html' %}
+    {% endwith %}
+  {% elif slide.type == 'location' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/location.html' %}
+    {% endwith %}
+  {% elif slide.type == 'travel_map' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/travel_map.html' %}
+    {% endwith %}
+  {% elif slide.type == 'contacts' %}
+    {% with slide_num=loop.index, content=slide.content %}
+      {% include 'slides/contacts.html' %}
+    {% endwith %}
+  {% endif %}
+{% endfor %}
+
+{# JavaScript - load in order (svg-library first, then modules) #}
+<script>
+{{ svg_library_js }}
+</script>
+<script>
+{{ icon_picker_js }}
+</script>
+<script>
+{{ logo_picker_js }}
+</script>
+<script>
+{{ colour_picker_js }}
+</script>
+<script>
+{{ transport_picker_js }}
+</script>
+<script>
+{{ settings_sync_js }}
+</script>
+<script>
+{{ editor_js }}
+</script>
+<script>
+{{ pdf_export_js }}
+</script>
+
+</body>
+</html>

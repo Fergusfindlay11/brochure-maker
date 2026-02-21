@@ -1,0 +1,74 @@
+{# LOCATION / AREA SLIDE - Photos of surrounding area #}
+<div class="slide-label">SLIDE {{ slide_num }} &mdash; LOCATION</div>
+<div class="slide-wrapper slide-location" id="slide{{ slide_num }}">
+  <div class="texture"></div>
+
+  <div class="header-bar">
+    <div class="logo-grid logo-zone" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
+      {% for i in range(20) %}<span style="border-color:rgba(255,255,255,0.5)"></span>{% endfor %}
+    </div>
+    <span class="bldg-name">{{ header_name }}</span>
+  </div>
+
+  <!-- Left col - large photo -->
+  <div class="left-col img-placeholder" style="position:relative;">
+    <div class="ph-icon">&#127963;</div>
+    <div class="ph-label">{{ (content.images[0].description) if content.images and content.images|length > 0 else 'Street scene / local area photo' }}</div>
+    <div class="ph-caption" contenteditable="true">{{ (content.images[0].caption) if content.images and content.images|length > 0 else 'Local area' }}</div>
+  </div>
+
+  <!-- Center - headline + body text -->
+  <div class="center-text">
+    <h2 contenteditable="true">{{ content.heading | default('Where ideas flourish') }}</h2>
+    <p contenteditable="true">{{ content.body_text | default('Description of the local area and amenities.') }}</p>
+  </div>
+
+  <!-- Right strip - 2 small photos -->
+  <div class="right-col-imgs">
+    {% for img in content.images[1:3] if content.images and content.images|length > 1 %}
+    <div class="img-placeholder" style="height:50%; position:relative;">
+      <div class="ph-icon">&#128722;</div>
+      <div class="ph-label">{{ img.description | default('Area photo') }}</div>
+      <div class="ph-caption" contenteditable="true">{{ img.caption | default('') }}</div>
+    </div>
+    {% else %}
+    <div class="img-placeholder" style="height:50%; position:relative;">
+      <div class="ph-icon">&#128722;</div>
+      <div class="ph-label">Local retail / amenity</div>
+      <div class="ph-caption" contenteditable="true">Local area</div>
+    </div>
+    <div class="img-placeholder" style="height:50%; position:relative;">
+      <div class="ph-icon">&#127947;</div>
+      <div class="ph-label">Leisure / fitness</div>
+      <div class="ph-caption" contenteditable="true">Leisure</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Bottom row - 3 more photos -->
+  <div class="bottom-imgs">
+    {% for img in content.images[3:6] if content.images and content.images|length > 3 %}
+    <div class="img-placeholder" style="position:relative;">
+      <div class="ph-icon">&#128247;</div>
+      <div class="ph-label">{{ img.description | default('Area photo') }}</div>
+      <div class="ph-caption" contenteditable="true">{{ img.caption | default('') }}</div>
+    </div>
+    {% else %}
+    <div class="img-placeholder" style="position:relative;">
+      <div class="ph-icon">&#127860;</div>
+      <div class="ph-label">Restaurant / cafe</div>
+      <div class="ph-caption" contenteditable="true">Dining</div>
+    </div>
+    <div class="img-placeholder" style="position:relative;">
+      <div class="ph-icon">&#127963;</div>
+      <div class="ph-label">Canal / park</div>
+      <div class="ph-caption" contenteditable="true">Outdoors</div>
+    </div>
+    <div class="img-placeholder" style="position:relative;">
+      <div class="ph-icon">&#128722;</div>
+      <div class="ph-label">Shopping centre</div>
+      <div class="ph-caption" contenteditable="true">Shopping</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>

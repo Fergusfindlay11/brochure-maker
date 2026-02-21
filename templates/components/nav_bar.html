@@ -1,0 +1,31 @@
+<div class="slide-nav">
+  {% if project_id %}
+  <a href="/" class="nav-home-btn" style="background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.25);font-weight:500;">&#8592; Home</a>
+  <button class="settings-btn" id="saveTemplateBtn" style="background:rgba(107,76,138,0.25);border-color:rgba(107,76,138,0.5);color:rgba(200,180,220,0.9);">&#9733; Save Template</button>
+  <div class="nav-divider"></div>
+  {% endif %}
+
+  {% for slide in slides %}
+  <a href="#slide{{ loop.index }}">{{ slide.nav_label }}</a>
+  {% endfor %}
+
+  <div class="nav-divider"></div>
+  <button class="settings-btn" id="settingsToggle">&#9881; Building</button>
+  <button class="settings-btn" id="exportPdfBtn" style="background:rgba(184,113,78,0.25);border-color:rgba(184,113,78,0.6);">&#11015; Export PDF</button>
+  <button class="settings-btn" id="downloadHtmlBtn" style="background:rgba(76,175,80,0.2);border-color:rgba(76,175,80,0.4);color:rgba(130,210,130,0.9);">&#128190; Download HTML</button>
+
+  <div class="nav-divider"></div>
+  <span class="bg-ctrl-label">Colour</span>
+  <div class="bg-swatch-row" id="globalSwatchRow">
+    <div class="bg-swatch active" style="background:{{ colour_scheme.primary }}" data-color="{{ colour_scheme.primary }}" title="Original"></div>
+    <div class="bg-swatch" style="background:#2C3E50" data-color="#2C3E50" title="Midnight Navy"></div>
+    <div class="bg-swatch" style="background:#3D5A3E" data-color="#3D5A3E" title="Forest Green"></div>
+    <div class="bg-swatch" style="background:#1A1A1A" data-color="#1A1A1A" title="Charcoal"></div>
+    <div class="bg-swatch" style="background:#6B4C8A" data-color="#6B4C8A" title="Plum"></div>
+    <div class="bg-swatch" style="background:#8A6C4C" data-color="#8A6C4C" title="Warm Tan"></div>
+    <div class="bg-swatch" style="background:#C4A882" data-color="#C4A882" title="Sand"></div>
+    <div class="bg-swatch-custom" title="Custom colour">
+      <input type="color" id="global-custom-color" value="{{ colour_scheme.primary }}">
+    </div>
+  </div>
+</div>

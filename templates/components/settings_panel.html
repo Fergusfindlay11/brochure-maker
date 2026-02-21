@@ -1,0 +1,92 @@
+<div class="settings-panel" id="settingsPanel">
+  <button class="settings-close" id="settingsClose">&#10005;</button>
+  <h3>&#9881; Building Parameters &mdash; syncs to all slides</h3>
+
+  <div class="settings-row">
+    <label>Building Name</label>
+    <input class="settings-input" id="bldgNameInput" type="text" value="{{ brochure_name }}" placeholder="e.g. The Old Sorting House">
+  </div>
+  <div class="settings-row">
+    <label>Location / Area</label>
+    <input class="settings-input" id="bldgLocationInput" type="text" value="{{ location }}" placeholder="e.g. Islington">
+  </div>
+  <div class="settings-row">
+    <label>Cover Subtitle</label>
+    <input class="settings-input" id="bldgSubtitleInput" type="text" value="{{ subtitle }}" placeholder="e.g. I S L I N G T O N">
+  </div>
+  <div class="settings-divider"></div>
+  <div class="settings-row">
+    <label>Page Title</label>
+    <input class="settings-input" id="pageTitleInput" type="text" value="{{ brochure_name }} &mdash; {{ location }}" placeholder="Browser tab title">
+  </div>
+  <p class="settings-hint">Changes propagate instantly across all header bars, the cover slide, and the back cover. The cover H1 and subtitle can still be edited directly inline.</p>
+
+  <div class="settings-divider"></div>
+  <h3 style="margin-bottom:10px;">&#11041; Logo Mark &mdash; syncs to all slides</h3>
+
+  <div class="logo-pick-row" id="logoPickRow">
+    <div class="logo-pick-opt active" data-logo="grid" title="Original grid mark">
+      <svg viewBox="0 0 32 40" fill="none">
+        <rect x="0" y="0" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="9" y="0" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="18" y="0" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="27" y="0" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="0" y="9" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="9" y="9" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="18" y="9" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="27" y="9" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="0" y="18" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="9" y="18" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="18" y="18" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="27" y="18" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="0" y="27" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="9" y="27" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="18" y="27" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="27" y="27" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="0" y="36" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="9" y="36" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="18" y="36" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+        <rect x="27" y="36" width="6" height="6" stroke="rgba(255,255,255,0.8)" stroke-width="1.2" fill="none"/>
+      </svg>
+    </div>
+    <div class="logo-pick-opt" data-logo="diamond" title="Diamond mark">
+      <svg viewBox="0 0 36 36" fill="none"><polygon points="18,3 33,18 18,33 3,18" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" fill="none"/><polygon points="18,10 26,18 18,26 10,18" stroke="rgba(255,255,255,0.85)" stroke-width="1.4" fill="none"/><line x1="18" y1="3" x2="18" y2="33" stroke="rgba(255,255,255,0.4)" stroke-width="0.8"/><line x1="3" y1="18" x2="33" y2="18" stroke="rgba(255,255,255,0.4)" stroke-width="0.8"/></svg>
+    </div>
+    <div class="logo-pick-opt" data-logo="tower" title="Tower mark">
+      <svg viewBox="0 0 36 36" fill="none"><rect x="10" y="8" width="16" height="24" stroke="rgba(255,255,255,0.85)" stroke-width="1.6" fill="none"/><polyline points="7,8 18,2 29,8" stroke="rgba(255,255,255,0.85)" stroke-width="1.6" stroke-linejoin="round" fill="none"/><rect x="14" y="22" width="8" height="10" stroke="rgba(255,255,255,0.85)" stroke-width="1.2" fill="none"/><rect x="12" y="14" width="5" height="5" stroke="rgba(255,255,255,0.7)" stroke-width="1.1" fill="none"/><rect x="19" y="14" width="5" height="5" stroke="rgba(255,255,255,0.7)" stroke-width="1.1" fill="none"/></svg>
+    </div>
+    <div class="logo-pick-opt" data-logo="arch" title="Arch mark">
+      <svg viewBox="0 0 36 36" fill="none"><path d="M8 34 L8 16 Q8 4 18 4 Q28 4 28 16 L28 34" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><line x1="8" y1="34" x2="28" y2="34" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" stroke-linecap="round"/><path d="M13 34 L13 20 Q13 11 18 11 Q23 11 23 20 L23 34" stroke="rgba(255,255,255,0.5)" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>
+    </div>
+    <div class="logo-pick-opt" data-logo="hex" title="Hexagon mark">
+      <svg viewBox="0 0 36 36" fill="none"><polygon points="18,3 31,10.5 31,25.5 18,33 5,25.5 5,10.5" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" fill="none"/><polygon points="18,9 26,13.5 26,22.5 18,27 10,22.5 10,13.5" stroke="rgba(255,255,255,0.5)" stroke-width="1.1" fill="none"/></svg>
+    </div>
+    <div class="logo-pick-opt" data-logo="circles" title="Circle rings">
+      <svg viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="14" stroke="rgba(255,255,255,0.85)" stroke-width="1.6" fill="none"/><circle cx="18" cy="18" r="9" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" fill="none"/><circle cx="18" cy="18" r="4" stroke="rgba(255,255,255,0.4)" stroke-width="1" fill="none"/></svg>
+    </div>
+    <div class="logo-upload-btn" id="logoUploadBtn" title="Upload your own logo">
+      <span style="font-size:20px;">&#11014;</span>
+      <span>Upload</span>
+    </div>
+  </div>
+  <input type="file" id="logoFileInput" accept="image/*" style="display:none">
+  <p class="settings-hint" style="margin-top:8px;">Click any mark to apply globally. Upload supports PNG/SVG with transparent background.</p>
+
+  <div class="settings-divider"></div>
+  <h3 style="margin-bottom:10px;">&#8596; Cover Logo Size &amp; Position</h3>
+
+  <div class="settings-row" style="gap:12px;align-items:center;">
+    <label style="width:80px;">Size</label>
+    <input type="range" id="coverLogoSize" min="40" max="220" value="55" style="flex:1;accent-color:var(--primary);cursor:pointer;">
+    <span id="coverLogoSizeVal" style="font-size:11px;color:rgba(255,255,255,0.5);width:36px;text-align:right;">55px</span>
+  </div>
+
+  <div class="settings-row" style="gap:8px;flex-wrap:wrap;margin-top:2px;">
+    <label style="width:80px;">Position</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="pos-btn active" data-pos="center" style="padding:4px 9px;font-size:9px;letter-spacing:0.08em;border-radius:3px;cursor:pointer;font-family:Jost,sans-serif;border:1px solid rgba(255,255,255,0.25);background:var(--primary);color:white;">Centre</button>
+      <button class="pos-btn" data-pos="top-left" style="padding:4px 9px;font-size:9px;letter-spacing:0.08em;border-radius:3px;cursor:pointer;font-family:Jost,sans-serif;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);">Top Left</button>
+      <button class="pos-btn" data-pos="top-right" style="padding:4px 9px;font-size:9px;letter-spacing:0.08em;border-radius:3px;cursor:pointer;font-family:Jost,sans-serif;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);">Top Right</button>
+    </div>
+  </div>
+</div>

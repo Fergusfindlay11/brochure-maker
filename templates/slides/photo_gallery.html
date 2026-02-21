@@ -1,0 +1,52 @@
+{# PHOTO GALLERY SLIDE - Grid of interior/exterior photos #}
+<div class="slide-label">SLIDE {{ slide_num }} &mdash; PHOTOS</div>
+<div class="slide-wrapper slide-gallery" id="slide{{ slide_num }}">
+  <div class="texture"></div>
+
+  <div class="header-bar">
+    <div class="logo-grid logo-zone" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
+      {% for i in range(20) %}<span style="border-color:rgba(255,255,255,0.5)"></span>{% endfor %}
+    </div>
+    <span class="bldg-name">{{ header_name }}</span>
+  </div>
+
+  {% set images = content.images | default([]) %}
+  {% if images | length == 4 %}
+  {# 2x2 grid layout #}
+  <div class="top-row" style="height:375px;">
+    <div class="ph-img img-placeholder" style="height:100%; position:relative;">
+      <div class="ph-icon">&#9749;</div>
+      <div class="ph-label">{{ images[0].description | default('Photo 1') }}</div>
+      <div class="caption" style="position:absolute; bottom:10px; left:12px; font-size:9px; color:rgba(255,255,255,0.7); letter-spacing:0.08em; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:2px; z-index:3;" contenteditable="true">{{ images[0].caption | default('Photo 1') }}</div>
+    </div>
+    <div class="ph-img img-placeholder" style="height:100%; position:relative;">
+      <div class="ph-icon">&#128203;</div>
+      <div class="ph-label">{{ images[1].description | default('Photo 2') }}</div>
+      <div class="caption" style="position:absolute; bottom:10px; left:12px; font-size:9px; color:rgba(255,255,255,0.7); letter-spacing:0.08em; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:2px; z-index:3;" contenteditable="true">{{ images[1].caption | default('Photo 2') }}</div>
+    </div>
+  </div>
+  <div class="bottom-row" style="height:375px;">
+    <div class="ph-img img-placeholder" style="height:100%; position:relative;">
+      <div class="ph-icon">&#128421;</div>
+      <div class="ph-label">{{ images[2].description | default('Photo 3') }}</div>
+      <div class="caption" style="position:absolute; bottom:10px; left:12px; font-size:9px; color:rgba(255,255,255,0.7); letter-spacing:0.08em; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:2px; z-index:3;" contenteditable="true">{{ images[2].caption | default('Photo 3') }}</div>
+    </div>
+    <div class="ph-img img-placeholder" style="height:100%; position:relative;">
+      <div class="ph-icon">&#128715;</div>
+      <div class="ph-label">{{ images[3].description | default('Photo 4') }}</div>
+      <div class="caption" style="position:absolute; bottom:10px; left:12px; font-size:9px; color:rgba(255,255,255,0.7); letter-spacing:0.08em; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:2px; z-index:3;" contenteditable="true">{{ images[3].caption | default('Photo 4') }}</div>
+    </div>
+  </div>
+  {% else %}
+  {# Flexible grid for any number of images #}
+  <div style="display:grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); height:100%; padding-top:60px;">
+    {% for img in images %}
+    <div class="ph-img img-placeholder" style="position:relative;">
+      <div class="ph-icon">&#128247;</div>
+      <div class="ph-label">{{ img.description | default('Photo') }}</div>
+      <div class="caption" style="position:absolute; bottom:10px; left:12px; font-size:9px; color:rgba(255,255,255,0.7); letter-spacing:0.08em; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:2px; z-index:3;" contenteditable="true">{{ img.caption | default('Caption') }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
