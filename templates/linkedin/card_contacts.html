@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>{{ css }}</style>
+</head>
+<body>
+<div class="li-card li-contacts">
+  <div class="li-texture"></div>
+  <div class="li-orb"></div>
+  <div class="li-logo">
+    <div class="li-logo-grid">
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+  <h1 class="li-cta-title">{{ brochure_name }}</h1>
+  <div class="li-cta-subtitle">{{ subtitle }}</div>
+  {% if agency_name %}
+  <div class="li-agency">{{ agency_name }}</div>
+  {% endif %}
+  <div class="li-contacts-row">
+    {% for contact in contacts %}
+    <div class="li-contact-card">
+      <div class="li-contact-divider"></div>
+      <div class="li-contact-name">{{ contact.name }}</div>
+      {% if contact.email %}<div class="li-contact-detail">{{ contact.email }}</div>{% endif %}
+      {% if contact.phone %}<div class="li-contact-detail">{{ contact.phone }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="li-cta-text">Get in touch to arrange a viewing</div>
+</div>
+</body>
+</html>

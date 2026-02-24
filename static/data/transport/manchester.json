@@ -1,0 +1,16 @@
+{
+  "city": "Manchester",
+  "network": "TfGM",
+  "lines": [
+    {"name": "Metrolink Altrincham", "abbr": "ALT", "colour": "#006633"},
+    {"name": "Metrolink Bury", "abbr": "BUR", "colour": "#FFD200"},
+    {"name": "Metrolink Ashton", "abbr": "ASH", "colour": "#0066CC"},
+    {"name": "Metrolink East Didsbury", "abbr": "EDI", "colour": "#993366"},
+    {"name": "Metrolink Eccles", "abbr": "ECC", "colour": "#00AACC"},
+    {"name": "Metrolink Rochdale", "abbr": "ROC", "colour": "#FF6600"},
+    {"name": "Metrolink Airport", "abbr": "AIR", "colour": "#CC0033"},
+    {"name": "Metrolink Trafford Park", "abbr": "TFP", "colour": "#006699"},
+    {"name": "Northern Rail", "abbr": "NTR", "colour": "#1D1D1B"},
+    {"name": "TransPennine Express", "abbr": "TPE", "colour": "#09A5DB"}
+  ]
+}

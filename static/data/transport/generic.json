@@ -1,0 +1,12 @@
+{
+  "city": "Custom",
+  "network": "Custom",
+  "lines": [
+    {"name": "Line 1", "abbr": "L1", "colour": "#E32017"},
+    {"name": "Line 2", "abbr": "L2", "colour": "#003688"},
+    {"name": "Line 3", "abbr": "L3", "colour": "#00782A"},
+    {"name": "Line 4", "abbr": "L4", "colour": "#FFD300"},
+    {"name": "Line 5", "abbr": "L5", "colour": "#6950A1"},
+    {"name": "Line 6", "abbr": "L6", "colour": "#EE7C0E"}
+  ]
+}

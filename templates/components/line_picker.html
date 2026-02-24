@@ -1,7 +1,17 @@
 <!-- Line picker overlay (tube builder) -->
 <div class="line-picker-overlay" id="linePickerOverlay">
   <div class="line-picker-panel" id="linePickerPanel">
-    <div class="lp-title">Select tube &amp; rail lines</div>
+    <div class="lp-title">Select transport lines</div>
+    <div class="lp-city-row">
+      <label class="lp-city-label">City</label>
+      <select id="citySelector" class="lp-city-select">
+        <option value="london" selected>London (TFL)</option>
+        <option value="manchester">Manchester (TfGM)</option>
+        <option value="birmingham">Birmingham (WM Metro)</option>
+        <option value="edinburgh">Edinburgh (Lothian)</option>
+        <option value="generic">Custom / Other</option>
+      </select>
+    </div>
     <div class="line-grid" id="linePickerGrid"></div>
     <button class="lp-done-btn" id="linePickerDone">Done</button>
   </div>

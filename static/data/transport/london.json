@@ -1,0 +1,23 @@
+{
+  "city": "London",
+  "network": "TFL",
+  "lines": [
+    {"name": "Bakerloo", "abbr": "BAK", "colour": "#B36305"},
+    {"name": "Central", "abbr": "CEN", "colour": "#E32017"},
+    {"name": "Circle", "abbr": "CIR", "colour": "#FFD300"},
+    {"name": "District", "abbr": "DIS", "colour": "#00782A"},
+    {"name": "Elizabeth", "abbr": "ELZ", "colour": "#6950A1"},
+    {"name": "Hammersmith & City", "abbr": "H&C", "colour": "#F3A9BB"},
+    {"name": "Jubilee", "abbr": "JUB", "colour": "#A0A5A9"},
+    {"name": "Metropolitan", "abbr": "MET", "colour": "#9B0056"},
+    {"name": "Northern", "abbr": "NTH", "colour": "#000000"},
+    {"name": "Piccadilly", "abbr": "PIC", "colour": "#003688"},
+    {"name": "Victoria", "abbr": "VIC", "colour": "#0098D4"},
+    {"name": "Waterloo & City", "abbr": "W&C", "colour": "#95CDBA"},
+    {"name": "DLR", "abbr": "DLR", "colour": "#00A4A7"},
+    {"name": "London Overground", "abbr": "OVG", "colour": "#EE7C0E"},
+    {"name": "Thameslink", "abbr": "THL", "colour": "#D799AF"},
+    {"name": "Southeastern", "abbr": "SER", "colour": "#00AFE8"},
+    {"name": "Crossrail 2", "abbr": "CR2", "colour": "#6950A1"}
+  ]
+}

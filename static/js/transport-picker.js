@@ -193,6 +193,71 @@ document.addEventListener('DOMContentLoaded', function () {
     btn.addEventListener('click', function () { btn.closest('.travel-route').remove(); });
   });
 
+  // ── City Selector (Dynamic Transport Networks) ──
+  var citySelector = document.getElementById('citySelector');
+  var cityCache = {};
+
+  if (citySelector) {
+    citySelector.addEventListener('change', function () {
+      var city = this.value;
+      loadCityLines(city);
+    });
+  }
+
+  function loadCityLines(city) {
+    if (cityCache[city]) {
+      applyCityLines(cityCache[city]);
+      return;
+    }
+
+    fetch('/static/data/transport/' + city + '.json')
+      .then(function (res) {
+        if (!res.ok) throw new Error('City data not found');
+        return res.json();
+      })
+      .then(function (data) {
+        // Convert JSON format to internal format
+        var lines = data.lines.map(function (l) {
+          var id = l.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          return {
+            id: id,
+            name: l.name,
+            abbr: l.abbr,
+            bg: l.colour,
+            fg: isLightColor(l.colour) ? '#333' : '#fff',
+          };
+        });
+        cityCache[city] = lines;
+        applyCityLines(lines);
+      })
+      .catch(function () {
+        // Fallback: keep current lines
+      });
+  }
+
+  function applyCityLines(newLines) {
+    // Update TFL_LINES and LINE_MAP
+    TFL_LINES.length = 0;
+    newLines.forEach(function (l) { TFL_LINES.push(l); });
+    // Rebuild LINE_MAP
+    Object.keys(LINE_MAP).forEach(function (k) { delete LINE_MAP[k]; });
+    TFL_LINES.forEach(function (l) { LINE_MAP[l.id] = l; });
+    // Update CSS
+    lineStyle.textContent = TFL_LINES.map(function (l) {
+      return '.t-dot.' + l.id + ' { background: ' + l.bg + '; color: ' + l.fg + '; }';
+    }).join('\n');
+    // Re-render picker if open
+    if (activeDotsContainer) renderLinePicker(activeDotsContainer);
+  }
+
+  function isLightColor(hex) {
+    hex = hex.replace('#', '');
+    var r = parseInt(hex.substr(0, 2), 16);
+    var g = parseInt(hex.substr(2, 2), 16);
+    var b = parseInt(hex.substr(4, 2), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 > 160;
+  }
+
   // Expose for other modules
   window.TFL_LINES     = TFL_LINES;
   window.LINE_MAP      = LINE_MAP;

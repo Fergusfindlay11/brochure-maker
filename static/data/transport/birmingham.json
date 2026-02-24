@@ -1,0 +1,13 @@
+{
+  "city": "Birmingham",
+  "network": "WM Metro",
+  "lines": [
+    {"name": "West Midlands Metro", "abbr": "MET", "colour": "#6AADE4"},
+    {"name": "Cross-City Line", "abbr": "CCL", "colour": "#E32017"},
+    {"name": "Chase Line", "abbr": "CHL", "colour": "#00782A"},
+    {"name": "Snow Hill Lines", "abbr": "SHL", "colour": "#FFD300"},
+    {"name": "Walsall Line", "abbr": "WAL", "colour": "#9B0056"},
+    {"name": "Stourbridge Line", "abbr": "STR", "colour": "#003688"},
+    {"name": "Coventry Line", "abbr": "COV", "colour": "#B36305"}
+  ]
+}

@@ -16,11 +16,14 @@
 body {
   background: #1a1a1a;
   font-family: 'Jost', sans-serif;
+  padding: 62px 24px 24px;
+}
+
+.slides-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  padding: 62px 24px 24px;
 }
 
 .slide-wrapper {
@@ -1237,6 +1240,34 @@ body {
   grid-template-columns: repeat(2, 1fr);
   gap: 5px;
 }
+.lp-city-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  margin-bottom: 10px;
+}
+.lp-city-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.06em;
+}
+.lp-city-select {
+  flex: 1;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.85);
+  font-family: 'Jost', sans-serif;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.lp-city-select option {
+  background: #1a1410;
+  color: rgba(255,255,255,0.85);
+}
 .line-opt {
   display: flex;
   align-items: center;
@@ -1282,6 +1313,227 @@ body {
 .lp-done-btn:hover { background: var(--terra-dark); }
 
 /* ============================
+   TEXT FORMATTING TOOLBAR
+============================ */
+.text-toolbar {
+  position: absolute;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: #1a1410;
+  border: 1px solid rgba(184,113,78,0.4);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  z-index: 90000;
+  font-family: 'Jost', sans-serif;
+}
+.text-toolbar button {
+  background: none;
+  border: 1px solid transparent;
+  color: rgba(255,255,255,0.8);
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Jost', sans-serif;
+  line-height: 1;
+  min-width: 28px;
+  text-align: center;
+}
+.text-toolbar button:hover {
+  background: rgba(184,113,78,0.25);
+  border-color: rgba(184,113,78,0.4);
+}
+.text-toolbar button.active {
+  background: rgba(184,113,78,0.4);
+  border-color: rgba(184,113,78,0.6);
+  color: #fff;
+}
+.tt-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.15);
+  margin: 0 4px;
+}
+
+/* ============================
+   IMAGE CROPPER
+============================ */
+.img-crop-active {
+  cursor: crosshair !important;
+  outline: 2px dashed rgba(184,113,78,0.7) !important;
+  outline-offset: -2px;
+}
+.img-crop-controls {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(26,20,16,0.9);
+  border: 1px solid rgba(184,113,78,0.4);
+  border-radius: 6px;
+  padding: 6px 12px;
+  z-index: 100;
+  font-family: 'Jost', sans-serif;
+}
+.img-crop-controls label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 0.06em;
+}
+.img-crop-controls input[type="range"] {
+  width: 80px;
+  accent-color: var(--terra, #B8714E);
+}
+.img-crop-controls button {
+  background: rgba(184,113,78,0.3);
+  border: 1px solid rgba(184,113,78,0.5);
+  color: rgba(255,255,255,0.9);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Jost', sans-serif;
+}
+.img-crop-controls button:hover { background: rgba(184,113,78,0.5); }
+
+/* ============================
+   SLIDE MANAGER TOOLBAR
+============================ */
+.slide-manager-bar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 100;
+}
+.slide-wrapper:hover .slide-manager-bar { opacity: 1; }
+.slide-manager-bar button {
+  background: rgba(26,20,16,0.85);
+  border: 1px solid rgba(184,113,78,0.4);
+  color: rgba(255,255,255,0.8);
+  font-size: 13px;
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Jost', sans-serif;
+  padding: 0;
+}
+.slide-manager-bar button:hover {
+  background: rgba(184,113,78,0.35);
+  border-color: rgba(184,113,78,0.6);
+  color: #fff;
+}
+.slide-manager-bar button.sm-delete:hover {
+  background: rgba(200,60,60,0.35);
+  border-color: rgba(200,60,60,0.6);
+}
+.slide-manager-bar button.sm-hide {
+  font-size: 16px;
+}
+
+/* Hidden slides — collapsed in editor, excluded from print/export */
+.slide-wrapper.slide-hidden {
+  height: 60px;
+  min-height: 60px;
+  overflow: hidden;
+  opacity: 0.35;
+  border: 2px dashed rgba(184,113,78,0.4);
+  box-shadow: none;
+}
+.slide-wrapper.slide-hidden::after {
+  content: 'HIDDEN';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Jost', sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  color: rgba(255,255,255,0.5);
+  pointer-events: none;
+}
+.slide-wrapper.slide-hidden .slide-manager-bar {
+  opacity: 1;
+  top: 14px;
+}
+.slide-label.slide-hidden {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
+.slide-nav a.nav-link-hidden {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
+
+/* ============================
+   AI REWRITE TOOLBAR
+============================ */
+.ai-rewrite-toolbar {
+  position: absolute;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: #1a1410;
+  border: 1px solid rgba(107,76,138,0.5);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  z-index: 89999;
+  font-family: 'Jost', sans-serif;
+}
+.ai-rewrite-toolbar button {
+  background: none;
+  border: 1px solid transparent;
+  color: rgba(255,255,255,0.8);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Jost', sans-serif;
+  white-space: nowrap;
+}
+.ai-rewrite-toolbar button:hover {
+  background: rgba(107,76,138,0.25);
+  border-color: rgba(107,76,138,0.4);
+}
+.ai-rewrite-toolbar button.ai-loading {
+  opacity: 0.5;
+  cursor: wait;
+}
+.ai-rewrite-toolbar .ai-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.15);
+  margin: 0 3px;
+}
+
+/* ============================
+   AUTO-SAVE INDICATOR
+============================ */
+.autosave-indicator {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.4);
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.autosave-indicator.saving { color: rgba(184,113,78,0.7); }
+.autosave-indicator.saved { color: rgba(76,175,80,0.6); }
+.autosave-indicator.error { color: rgba(200,60,60,0.7); }
+
+/* ============================
    PDF EXPORT — print styles
 ============================ */
 @media print {
@@ -1313,7 +1565,14 @@ body {
   .settings-panel,
   .line-picker-overlay,
   #iconPickerOverlay,
-  .slide-label { display: none !important; }
+  .slide-label,
+  .text-toolbar,
+  .ai-rewrite-toolbar,
+  .slide-manager-bar,
+  .img-crop-controls,
+  .autosave-indicator { display: none !important; }
+
+  .slide-wrapper.slide-hidden { display: none !important; }
 
   .slides-container {
     display: block !important;

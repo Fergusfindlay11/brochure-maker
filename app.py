@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,7 +18,9 @@ load_dotenv()
 
 from brochure_maker.pdf_extractor import extract_pdf
 from brochure_maker.ai_analyser import analyse_brochure, analyse_brochure_streaming
-from brochure_maker.html_generator import generate_brochure_html
+from brochure_maker.html_generator import generate_brochure_html, generate_clean_html, generate_linkedin_cards
+from brochure_maker.ai_rewriter import rewrite_text
+from brochure_maker.pdf_renderer import render_pdf, HAS_PLAYWRIGHT
 from brochure_maker.template_manager import (
     save_template,
     load_template,
@@ -214,6 +216,40 @@ async def get_brochure(project_id: str):
 
 
 # ──────────────────────────────────────────────
+#  Clean HTML Export (Presentation Mode)
+# ──────────────────────────────────────────────
+@app.get("/api/projects/{project_id}/export/html", response_class=HTMLResponse)
+async def export_clean_html(project_id: str):
+    """Export a clean, presentation-only HTML (no editor UI)."""
+    analysis_path = PROJECTS_DIR / project_id / "analysis.json"
+    if not analysis_path.exists():
+        raise HTTPException(status_code=404, detail="Project analysis not found")
+
+    with open(analysis_path) as f:
+        analysis = json.load(f)
+
+    html = generate_clean_html(analysis=analysis, project_id=project_id)
+    return HTMLResponse(content=html)
+
+
+# ──────────────────────────────────────────────
+#  LinkedIn Carousel Export
+# ──────────────────────────────────────────────
+@app.get("/api/projects/{project_id}/export/linkedin")
+async def export_linkedin_cards(project_id: str):
+    """Export 4 LinkedIn carousel card HTMLs (1080x1080)."""
+    analysis_path = PROJECTS_DIR / project_id / "analysis.json"
+    if not analysis_path.exists():
+        raise HTTPException(status_code=404, detail="Project analysis not found")
+
+    with open(analysis_path) as f:
+        analysis = json.load(f)
+
+    cards = generate_linkedin_cards(analysis)
+    return JSONResponse({"cards": cards})
+
+
+# ──────────────────────────────────────────────
 #  Image Upload (for placeholders)
 # ──────────────────────────────────────────────
 @app.post("/api/projects/{project_id}/images")
@@ -387,6 +423,93 @@ async def serve_render(project_id: str, filename: str):
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Render not found")
     return FileResponse(str(filepath))
+
+
+# ──────────────────────────────────────────────
+#  AI Content Rewrite
+# ──────────────────────────────────────────────
+@app.post("/api/ai/rewrite")
+async def ai_rewrite(request: Request):
+    """Rewrite selected text using AI."""
+    body = await request.json()
+    text = body.get("text", "")
+    action = body.get("action", "rewrite")
+
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided")
+
+    try:
+        rewritten = await rewrite_text(text, action)
+        return JSONResponse({"rewritten": rewritten})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ──────────────────────────────────────────────
+#  Auto-Save State Persistence
+# ──────────────────────────────────────────────
+@app.post("/api/projects/{project_id}/state")
+async def save_editor_state(project_id: str, request: Request):
+    """Save editor state for a project."""
+    project_dir = PROJECTS_DIR / project_id
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    body = await request.body()
+    state_path = project_dir / "editor_state.json"
+    with open(state_path, "wb") as f:
+        f.write(body)
+
+    return JSONResponse({"message": "State saved"})
+
+
+@app.get("/api/projects/{project_id}/state")
+async def get_editor_state(project_id: str):
+    """Get saved editor state for a project."""
+    state_path = PROJECTS_DIR / project_id / "editor_state.json"
+    if not state_path.exists():
+        raise HTTPException(status_code=404, detail="No saved state")
+
+    with open(state_path) as f:
+        state = json.load(f)
+    return JSONResponse(state)
+
+
+# ──────────────────────────────────────────────
+#  Server-Side PDF Export (High Quality)
+# ──────────────────────────────────────────────
+@app.post("/api/projects/{project_id}/export/pdf")
+async def export_server_pdf(project_id: str):
+    """Export a high-quality PDF using headless Chromium (Playwright)."""
+    if not HAS_PLAYWRIGHT:
+        raise HTTPException(
+            status_code=501,
+            detail="Server-side PDF not available. Install Playwright: pip install playwright && python -m playwright install chromium",
+        )
+
+    analysis_path = PROJECTS_DIR / project_id / "analysis.json"
+    if not analysis_path.exists():
+        raise HTTPException(status_code=404, detail="Project analysis not found")
+
+    with open(analysis_path) as f:
+        analysis = json.load(f)
+
+    # Generate clean HTML first
+    html = generate_clean_html(analysis=analysis, project_id=project_id)
+
+    # Render to PDF
+    pdf_bytes = await render_pdf(html)
+
+    # Save PDF
+    pdf_path = PROJECTS_DIR / project_id / "brochure_export.pdf"
+    with open(pdf_path, "wb") as f:
+        f.write(pdf_bytes)
+
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        filename=f"{analysis.get('brochure_name', 'brochure')}.pdf",
+    )
 
 
 # ──────────────────────────────────────────────

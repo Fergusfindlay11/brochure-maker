@@ -1,0 +1,14 @@
+{
+  "city": "Edinburgh",
+  "network": "Lothian",
+  "lines": [
+    {"name": "Edinburgh Trams", "abbr": "TRM", "colour": "#8B0000"},
+    {"name": "ScotRail Edinburgh–Glasgow", "abbr": "EGR", "colour": "#003399"},
+    {"name": "ScotRail Fife Circle", "abbr": "FIF", "colour": "#00AA55"},
+    {"name": "ScotRail Borders", "abbr": "BOR", "colour": "#660066"},
+    {"name": "Lothian Buses 1", "abbr": "LB1", "colour": "#9B1F22"},
+    {"name": "Lothian Buses 10", "abbr": "L10", "colour": "#0077B6"},
+    {"name": "Lothian Buses 22", "abbr": "L22", "colour": "#E67300"},
+    {"name": "Lothian Buses 25", "abbr": "L25", "colour": "#3D8B37"}
+  ]
+}

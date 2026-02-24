@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>{{ css }}</style>
+</head>
+<body>
+<div class="li-card li-photos">
+  <div class="li-texture"></div>
+  <div class="li-header-bar">
+    <div class="li-logo-grid li-logo-sm">
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <span class="li-header-name">{{ header_name }}</span>
+  </div>
+  <div class="li-photo-grid">
+    {% for photo in photos %}
+    <div class="li-photo" {% if photo.image_url %}style="background-image:url('{{ photo.image_url }}');background-size:cover;background-position:center;"{% endif %}>
+      {% if not photo.image_url %}
+      <div class="li-photo-placeholder">{{ photo.description }}</div>
+      {% endif %}
+      {% if photo.caption %}
+      <div class="li-photo-caption">{{ photo.caption }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% if location_text %}
+  <div class="li-location-text">{{ location_text }}</div>
+  {% endif %}
+</div>
+</body>
+</html>

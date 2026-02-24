@@ -20,110 +20,67 @@
 </style>
 </head>
 <body>
-{% if project_id %}
-<script>window.__PROJECT_ID__ = "{{ project_id }}";</script>
-{% endif %}
 
-{# Navigation bar #}
-{% include 'components/nav_bar.html' %}
-
-{# Settings panel #}
-{% include 'components/settings_panel.html' %}
-
-{# Icon picker overlay #}
-{% include 'components/icon_picker.html' %}
-
-{# Line picker overlay #}
-{% include 'components/line_picker.html' %}
-
-{# PDF export overlay #}
-{% include 'components/pdf_overlay.html' %}
-
-{# Render each slide #}
+{# Render each slide — no editor UI, no contenteditable #}
 <div class="slides-container">
 {% for slide in slides %}
   {% if slide.type == 'cover' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/cover.html' %}
     {% endwith %}
   {% elif slide.type == 'text_and_photos' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/text_and_photos.html' %}
     {% endwith %}
   {% elif slide.type == 'highlights_grid' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/highlights_grid.html' %}
     {% endwith %}
   {% elif slide.type == 'photo_gallery' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/photo_gallery.html' %}
     {% endwith %}
   {% elif slide.type == 'floor_plan' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/floor_plan.html' %}
     {% endwith %}
   {% elif slide.type == 'services_grid' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/services_grid.html' %}
     {% endwith %}
   {% elif slide.type == 'location' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/location.html' %}
     {% endwith %}
   {% elif slide.type == 'travel_map' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/travel_map.html' %}
     {% endwith %}
   {% elif slide.type == 'contacts' %}
-    {% with slide_num=loop.index, content=slide.content %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
       {% include 'slides/contacts.html' %}
     {% endwith %}
   {% endif %}
 {% endfor %}
 </div>
 
-{# JavaScript - load in order (svg-library first, then modules) #}
+{# Minimal keyboard navigation #}
 <script>
-{{ svg_library_js }}
-</script>
-<script>
-{{ icon_picker_js }}
-</script>
-<script>
-{{ logo_picker_js }}
-</script>
-<script>
-{{ colour_picker_js }}
-</script>
-<script>
-{{ transport_picker_js }}
-</script>
-<script>
-{{ settings_sync_js }}
-</script>
-<script>
-{{ text_toolbar_js }}
-</script>
-<script>
-{{ image_cropper_js }}
-</script>
-<script>
-{{ slide_manager_js }}
-</script>
-<script>
-{{ undo_redo_js }}
-</script>
-<script>
-{{ ai_rewrite_js }}
-</script>
-<script>
-{{ auto_save_js }}
-</script>
-<script>
-{{ editor_js }}
-</script>
-<script>
-{{ pdf_export_js }}
+(function() {
+  var slides = document.querySelectorAll('.slide-wrapper');
+  var current = 0;
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === ' ') {
+      e.preventDefault();
+      current = Math.min(current + 1, slides.length - 1);
+      slides[current].scrollIntoView({ behavior: 'smooth' });
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      current = Math.max(current - 1, 0);
+      slides[current].scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+})();
 </script>
 
 </body>
