@@ -159,11 +159,12 @@ _PLACEMENT_OFFSETS = [
     (0.0, 1.5),    # South
 ]
 
-# Push search radius rings (in pixels).
-_PUSH_RADII = [20, 40, 60, 80]
-
 # Maximum leader line length (pixels).
 _MAX_LEADER_LENGTH = 60
+
+# Push search radius rings (in pixels).
+# Capped at _MAX_LEADER_LENGTH so every pushed label can have a leader line.
+_PUSH_RADII = [20, 40, 60]
 
 
 def _try_place(
