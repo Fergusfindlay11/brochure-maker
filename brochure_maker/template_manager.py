@@ -8,6 +8,7 @@ from typing import Optional, List, Dict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_STORE = BASE_DIR / "saved_templates"
+TEMPLATES_STORE.mkdir(exist_ok=True)
 
 
 def save_template(name: str, analysis: dict, preview_path: Optional[str] = None) -> dict:

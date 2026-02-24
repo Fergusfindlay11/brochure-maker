@@ -63,6 +63,8 @@ def generate_brochure_html(
     auto_save_js = _load_static("js/auto-save.js")
     editor_js = _load_static("js/editor.js")
     pdf_export_js = _load_static("js/pdf-export.js")
+    chat_sidebar_js = _load_static("js/chat-sidebar.js")
+    map_generator_js = _load_static("js/map-generator.js")
 
     # Prepare slides with nav labels
     slides = analysis.get("slides", [])
@@ -81,6 +83,8 @@ def generate_brochure_html(
     # Build header name for slide headers
     brochure_name = analysis.get("brochure_name", "Building Name")
     location = analysis.get("location", "Location")
+    address  = analysis.get("address", "")
+    postcode = analysis.get("postcode", "")
     header_name = f"{brochure_name.upper()}, {location.upper()}"
 
     # Build subtitle (spaced-out location)
@@ -112,6 +116,10 @@ def generate_brochure_html(
         auto_save_js=auto_save_js,
         editor_js=editor_js,
         pdf_export_js=pdf_export_js,
+        chat_sidebar_js=chat_sidebar_js,
+        map_generator_js=map_generator_js,
+        address=address,
+        postcode=postcode,
     )
 
     if output_path:

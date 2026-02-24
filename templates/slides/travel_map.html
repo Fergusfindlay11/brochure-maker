@@ -1,4 +1,10 @@
 {# TRAVEL TIMES SLIDE - Transport connections with tube line dots #}
+{% set line_abbr = {
+  'bakerloo': 'BA', 'central': 'C', 'circle': 'CI', 'district': 'D',
+  'dlr': 'DLR', 'elizabeth': 'E', 'hammersmith': 'H', 'jubilee': 'J',
+  'metropolitan': 'M', 'northern': 'N', 'overground': 'OV', 'piccadilly': 'P',
+  'thameslink': 'TL', 'victoria': 'V', 'waterloo': 'W', 'national': 'NR', 'tram': 'TR'
+} %}
 <div class="slide-label">SLIDE {{ slide_num }} &mdash; TRAVEL TIMES</div>
 <div class="slide-wrapper slide-travel" id="slide{{ slide_num }}">
   <div class="texture"></div>
@@ -20,7 +26,7 @@
         <div class="route-name" contenteditable="true">{{ station.name }}{% if station.time %} - {{ station.time }}{% endif %}</div>
         <div class="transport-dots">
           {% for line_id in station.lines | default([]) %}
-          <div class="t-dot {{ line_id }}" data-line="{{ line_id }}" title="{{ line_id | capitalize }}"></div>
+          <div class="t-dot {{ line_id }}" data-line="{{ line_id }}" title="{{ line_id | capitalize }}">{{ line_abbr.get(line_id, line_id[0]|upper) }}</div>
           {% endfor %}
           <div class="add-line-btn" title="Add line">+</div>
         </div>
@@ -38,5 +44,6 @@
   <div class="map-area img-placeholder" style="position:relative;">
     <div class="ph-icon">&#128506;</div>
     <div class="ph-label">Area map &mdash; upload local map image</div>
+    <button class="map-generate-btn" id="generateMapBtn" title="Auto-generate neighbourhood map">&#127758; Generate Map</button>
   </div>
 </div>

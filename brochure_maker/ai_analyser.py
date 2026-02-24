@@ -7,10 +7,11 @@ from typing import AsyncIterator
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+from pathlib import Path as _Path
+load_dotenv(_Path(__file__).resolve().parent.parent / ".env")
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "anthropic/claude-sonnet-4"
+MODEL = "anthropic/claude-sonnet-4-6"
 
 SYSTEM_PROMPT = """You are a brochure analysis expert. You receive images of each page of a PDF brochure along with extracted text content. Your job is to analyse the brochure and produce a structured JSON output that describes the brochure's content, layout, and style.
 
@@ -26,6 +27,8 @@ Return ONLY valid JSON with this exact structure (no markdown, no code fences):
 {
   "brochure_name": "Name of the property/building",
   "location": "Area/city",
+  "address": "Street address if visible (e.g. 1 New North Road)",
+  "postcode": "UK postcode if visible (e.g. N1 6TA)",
   "tagline": "Main tagline if present",
   "colour_scheme": {
     "primary": "#hex",
@@ -157,6 +160,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no code fences):
 - For transport lines, use lowercase identifiers: bakerloo, central, circle, district, dlr, elizabeth, hammersmith, jubilee, metropolitan, northern, overground, piccadilly, thameslink, victoria, waterloo, national, tram
 - Extract ALL text faithfully - don't summarise or paraphrase
 - Describe images in enough detail that someone could source a replacement photo
+- Extract the building street address and UK postcode from the PDF text if visible (commonly found on contacts page, cover, or legal text). If not found, leave as empty strings
 """
 
 

@@ -14,12 +14,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import StreamingResponse
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from brochure_maker.pdf_extractor import extract_pdf
 from brochure_maker.ai_analyser import analyse_brochure, analyse_brochure_streaming
 from brochure_maker.html_generator import generate_brochure_html, generate_clean_html, generate_linkedin_cards
 from brochure_maker.ai_rewriter import rewrite_text
+from brochure_maker.ai_chat import chat_with_brochure
+from brochure_maker.map_generator import generate_neighbourhood_map
 from brochure_maker.pdf_renderer import render_pdf, HAS_PLAYWRIGHT
 from brochure_maker.template_manager import (
     save_template,
@@ -122,6 +124,27 @@ async def _process_brochure(project_id: str, pdf_path: str, project_dir: str):
         analysis_path = os.path.join(project_dir, "analysis.json")
         with open(analysis_path, "w", encoding="utf-8") as f:
             json.dump(analysis, f, indent=2, ensure_ascii=False)
+
+        # Auto-geocode if address/postcode were extracted by AI
+        address_str = analysis.get("address", "")
+        postcode_str = analysis.get("postcode", "")
+        if (address_str or postcode_str) and not analysis.get("lat"):
+            try:
+                import logging as _logging
+                _logger = _logging.getLogger(__name__)
+                from brochure_maker.map_generator import geocode_structured
+                city = analysis.get("location", "")
+                geo_lat, geo_lng = await geocode_structured(
+                    street=address_str, postcode=postcode_str, city=city
+                )
+                analysis["lat"] = geo_lat
+                analysis["lng"] = geo_lng
+                with open(analysis_path, "w", encoding="utf-8") as f:
+                    json.dump(analysis, f, indent=2, ensure_ascii=False)
+                _logger.info("Auto-geocoded %s %s -> (%s, %s)", address_str, postcode_str, geo_lat, geo_lng)
+            except Exception as e:
+                import logging as _logging
+                _logging.getLogger(__name__).warning("Auto-geocode failed: %s", e)
 
         project_status[project_id] = {
             "status": "generating",
@@ -348,18 +371,21 @@ async def save_template_route(
     if not analysis_path.exists():
         raise HTTPException(status_code=404, detail="Project analysis not found")
 
-    with open(analysis_path) as f:
-        analysis = json.load(f)
+    try:
+        with open(analysis_path) as f:
+            analysis = json.load(f)
 
-    # Use first page render as preview
-    render_path = PROJECTS_DIR / project_id / "renders" / "page1.png"
-    preview = str(render_path) if render_path.exists() else None
+        # Use first page render as preview
+        render_path = PROJECTS_DIR / project_id / "renders" / "page1.png"
+        preview = str(render_path) if render_path.exists() else None
 
-    template_def = save_template(name, analysis, preview)
-    return JSONResponse({
-        "message": f"Template '{name}' saved.",
-        "template": template_def,
-    })
+        template_def = save_template(name, analysis, preview)
+        return JSONResponse({
+            "message": f"Template '{name}' saved.",
+            "template": template_def,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save template: {str(e)}")
 
 
 @app.get("/api/templates")
@@ -446,6 +472,171 @@ async def ai_rewrite(request: Request):
 
 
 # ──────────────────────────────────────────────
+#  AI Chat (Conversational Brochure Editing)
+# ──────────────────────────────────────────────
+@app.post("/api/projects/{project_id}/chat")
+async def ai_chat(project_id: str, request: Request):
+    """Chat with AI to edit the brochure."""
+    project_dir = PROJECTS_DIR / project_id
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    body = await request.json()
+    message = body.get("message", "")
+    brochure_context = body.get("brochure_context", [])
+    history = body.get("history", [])
+    selection_context = body.get("selection_context", None)
+    active_slide_id = body.get("active_slide_id", None)
+
+    if not message:
+        raise HTTPException(status_code=400, detail="No message provided")
+
+    try:
+        result = await chat_with_brochure(
+            message, brochure_context, history,
+            selection_context=selection_context,
+            active_slide_id=active_slide_id,
+        )
+        return JSONResponse(result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/projects/{project_id}/chat/history")
+async def get_chat_history(project_id: str):
+    """Get chat history for a project."""
+    history_path = PROJECTS_DIR / project_id / "chat_history.json"
+    if not history_path.exists():
+        return JSONResponse({"messages": []})
+    with open(history_path) as f:
+        return JSONResponse(json.load(f))
+
+
+@app.post("/api/projects/{project_id}/chat/history")
+async def save_chat_history(project_id: str, request: Request):
+    """Save chat history for a project."""
+    project_dir = PROJECTS_DIR / project_id
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    body = await request.body()
+    with open(project_dir / "chat_history.json", "wb") as f:
+        f.write(body)
+    return JSONResponse({"message": "Chat history saved"})
+
+
+# ──────────────────────────────────────────────
+#  Geocode Building Address
+# ──────────────────────────────────────────────
+@app.post("/api/projects/{project_id}/geocode")
+async def geocode_building(project_id: str, request: Request):
+    """Geocode building address using structured params; store lat/lng in analysis.json."""
+    project_dir = PROJECTS_DIR / project_id
+    analysis_path = project_dir / "analysis.json"
+    if not analysis_path.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    body = await request.json()
+    street   = body.get("address", "")
+    postcode = body.get("postcode", "")
+    city     = body.get("city", "")
+
+    from brochure_maker.map_generator import geocode_structured
+    try:
+        lat, lng = await geocode_structured(street=street, postcode=postcode, city=city)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Geocoding failed: {str(e)}")
+
+    with open(analysis_path) as f:
+        analysis = json.load(f)
+    analysis["address"] = street
+    analysis["postcode"] = postcode
+    analysis["lat"] = lat
+    analysis["lng"] = lng
+    with open(analysis_path, "w") as f:
+        json.dump(analysis, f, indent=2)
+
+    display_name = ", ".join(filter(None, [street, postcode, city]))
+    return JSONResponse({"lat": lat, "lng": lng, "display_name": display_name})
+
+
+# ──────────────────────────────────────────────
+#  Neighbourhood Map Generation
+# ──────────────────────────────────────────────
+@app.post("/api/projects/{project_id}/generate-map")
+async def generate_map(project_id: str, request: Request):
+    """Generate a neighbourhood map from analysis data."""
+    project_dir = PROJECTS_DIR / project_id
+    analysis_path = project_dir / "analysis.json"
+    if not analysis_path.exists():
+        raise HTTPException(status_code=404, detail="Project analysis not found")
+
+    with open(analysis_path) as f:
+        analysis = json.load(f)
+
+    body = {}
+    raw = await request.body()
+    if raw:
+        body = json.loads(raw)
+
+    brochure_name = analysis.get("brochure_name", "")
+    location = analysis.get("location", "")
+    primary_colour = body.get(
+        "primary_colour",
+        analysis.get("colour_scheme", {}).get("primary", "#B8714E"),
+    )
+    base_hex = body.get("base_hex", primary_colour)
+    map_width = max(200, min(2000, int(body.get("map_width", 940))))
+    map_height = max(200, min(1500, int(body.get("map_height", 750))))
+
+    # Find travel_map slide for station data
+    stations = []
+    for slide in analysis.get("slides", []):
+        if slide.get("type") == "travel_map":
+            stations = slide.get("content", {}).get("stations", [])
+            break
+
+    address = f"{brochure_name}, {location}"
+    lat = analysis.get("lat")
+    lng = analysis.get("lng")
+    style = body.get("style", "illustrated")
+    radius_m = max(150, min(1000, int(body.get("radius_m", 350))))
+    debug = bool(body.get("debug", False))
+    colour_scheme_data = analysis.get("colour_scheme", {})
+    colour_scheme_data.setdefault("primary", primary_colour)
+
+    try:
+        result = await generate_neighbourhood_map(
+            address=address,
+            location=location,
+            stations=stations,
+            primary_colour=primary_colour,
+            width=map_width,
+            height=map_height,
+            lat=lat,
+            lng=lng,
+            style=style,
+            colour_scheme=colour_scheme_data,
+            building_name=brochure_name,
+            base_hex=base_hex,
+            radius_m=radius_m,
+            debug=debug,
+        )
+        response = {"message": "Map generated successfully", "format": result["format"]}
+        if result["format"] == "svg":
+            response["svg_content"] = result["svg_content"]
+        else:
+            response["image_data_url"] = result["image_data_url"]
+        return JSONResponse(response)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Map generation failed: {e}")
+
+
+# ──────────────────────────────────────────────
 #  Auto-Save State Persistence
 # ──────────────────────────────────────────────
 @app.post("/api/projects/{project_id}/state")
@@ -517,4 +708,4 @@ async def export_server_pdf(project_id: str):
 # ──────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000)

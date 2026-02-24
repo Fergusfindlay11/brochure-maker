@@ -39,6 +39,27 @@
 {# PDF export overlay #}
 {% include 'components/pdf_overlay.html' %}
 
+{# AI Chat Sidebar #}
+<div class="chat-sidebar" id="chatSidebarPanel">
+  <div class="chat-sidebar-header">
+    <span>AI Chat</span>
+    <button class="chat-minimize-btn" id="chatMinimizeBtn" title="Minimize">&#9866;</button>
+    <button class="chat-close-btn" id="chatCloseBtn">&times;</button>
+  </div>
+  <div class="chat-messages" id="chatMessages"></div>
+  <div class="chat-context-indicator" id="chatContextIndicator" style="display:none;">
+    <span class="ctx-text" id="ctxText"></span>
+    <button class="ctx-dismiss" id="ctxDismiss" title="Clear context (send all slides)">&times;</button>
+  </div>
+  <div class="chat-input-row">
+    <textarea id="chatInput" placeholder="e.g. Change the heading to..." rows="2"></textarea>
+    <button id="chatSendBtn">&#10148;</button>
+  </div>
+</div>
+<div class="chat-minimized-tab" id="chatMinimizedTab" style="display:none;">
+  <span>&#128172;</span>
+</div>
+
 {# Render each slide #}
 <div class="slides-container">
 {% for slide in slides %}
@@ -124,6 +145,12 @@
 </script>
 <script>
 {{ pdf_export_js }}
+</script>
+<script>
+{{ chat_sidebar_js }}
+</script>
+<script>
+{{ map_generator_js }}
 </script>
 
 </body>

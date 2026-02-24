@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "brochure-maker",
-      "runtimeExecutable": "python3",
+      "runtimeExecutable": "python",
       "runtimeArgs": ["app.py"],
       "port": 8000
     }

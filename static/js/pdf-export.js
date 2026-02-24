@@ -92,8 +92,13 @@ document.addEventListener('DOMContentLoaded', function () {
               showBrochureToast('Template "' + name + '" saved successfully.');
             });
           } else {
-            return res.json().then(function (data) {
-              showBrochureToast('Error: ' + (data.detail || 'Failed to save template.'));
+            return res.text().then(function (text) {
+              try {
+                var data = JSON.parse(text);
+                showBrochureToast('Error: ' + (data.detail || 'Failed to save template.'));
+              } catch (e) {
+                showBrochureToast('Error: Failed to save template (server error).');
+              }
             });
           }
         })
@@ -161,7 +166,9 @@ document.addEventListener('DOMContentLoaded', function () {
       '.line-picker-overlay', '#pdfOverlay', '.slide-label',
       '.slide-manager-bar', '.text-toolbar', '.ai-rewrite-toolbar',
       '.route-delete-btn', '.add-line-btn', '.tube-add-btn',
-      '#brochureToast', '#brToastStyle'
+      '#brochureToast', '#brToastStyle',
+      '.slides-dropdown-panel', '.chat-sidebar',
+      '.chat-minimized-tab', '.map-generate-btn'
     ];
     removeSelectors.forEach(function (sel) {
       clone.querySelectorAll(sel).forEach(function (el) { el.remove(); });

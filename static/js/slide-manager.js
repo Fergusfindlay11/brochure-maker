@@ -118,33 +118,79 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function syncNavBar() {
-    var nav = document.querySelector('.slide-nav');
-    if (!nav) return;
+    var panel = document.getElementById('slidesDropdownPanel');
+    if (!panel) return;
 
-    // Remove existing slide links
-    var oldLinks = nav.querySelectorAll('a[href^="#slide"]');
-    oldLinks.forEach(function (a) { a.remove(); });
+    // Clear existing items
+    panel.innerHTML = '';
 
-    // Find insertion point (before first nav-divider after slide links)
-    var dividers = nav.querySelectorAll('.nav-divider');
-    var insertBefore = dividers.length > 1 ? dividers[1] : null;
-
-    // Build new links from current slides
+    // Build new items from current slides
     var slides = document.querySelectorAll('.slide-wrapper');
     slides.forEach(function (slide, idx) {
-      var a = document.createElement('a');
-      a.href = '#slide' + (idx + 1);
-      // Try to get a label from slide-label or use generic
-      var label = slide.querySelector('.slide-label');
-      a.textContent = label ? label.textContent.replace(/^\d+\.\s*/, '') : 'Slide ' + (idx + 1);
-      // Dim hidden slides in nav
-      if (slide.classList.contains('slide-hidden')) {
-        a.classList.add('nav-link-hidden');
+      var isHidden = slide.classList.contains('slide-hidden');
+      var prev = slide.previousElementSibling;
+      var labelText = '';
+      if (prev && prev.classList.contains('slide-label')) {
+        labelText = prev.textContent.replace(/^SLIDE\s*\d+\s*[—–-]\s*/i, '').trim();
       }
-      if (insertBefore) {
-        nav.insertBefore(a, insertBefore);
+      if (!labelText) labelText = 'Slide ' + (idx + 1);
+
+      var item = document.createElement('div');
+      item.className = 'slides-dropdown-item' + (isHidden ? ' hidden-slide' : '');
+      item.setAttribute('data-slide-index', idx + 1);
+
+      item.innerHTML =
+        '<label class="slides-dropdown-toggle">' +
+          '<input type="checkbox"' + (isHidden ? '' : ' checked') + ' data-slide-target="slide' + (idx + 1) + '">' +
+        '</label>' +
+        '<a href="#slide' + (idx + 1) + '" class="slides-dropdown-link">' + labelText + '</a>';
+
+      panel.appendChild(item);
+    });
+  }
+
+  // ── Slides Dropdown Handlers ──
+  var dropdownBtn = document.getElementById('slidesDropdownBtn');
+  var dropdownPanel = document.getElementById('slidesDropdownPanel');
+  if (dropdownBtn && dropdownPanel) {
+    dropdownBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      dropdownPanel.classList.toggle('open');
+    });
+
+    // Close on click outside
+    document.addEventListener('click', function (e) {
+      if (!dropdownPanel.contains(e.target) && e.target !== dropdownBtn) {
+        dropdownPanel.classList.remove('open');
+      }
+    });
+
+    // Checkbox toggles slide visibility
+    dropdownPanel.addEventListener('change', function (e) {
+      var checkbox = e.target;
+      if (!checkbox.matches('input[data-slide-target]')) return;
+      var targetId = checkbox.getAttribute('data-slide-target');
+      var slide = document.getElementById(targetId);
+      if (!slide) return;
+      var btn = slide.querySelector('.sm-hide');
+      if (btn) {
+        toggleHideSlide(slide, btn);
       } else {
-        nav.appendChild(a);
+        // Fallback: toggle directly
+        var isHidden = slide.classList.toggle('slide-hidden');
+        var prev = slide.previousElementSibling;
+        if (prev && prev.classList.contains('slide-label')) {
+          prev.classList.toggle('slide-hidden', isHidden);
+        }
+        if (window.pushUndoState) window.pushUndoState();
+      }
+    });
+
+    // Link click scrolls and closes dropdown
+    dropdownPanel.addEventListener('click', function (e) {
+      var link = e.target.closest('.slides-dropdown-link');
+      if (link) {
+        dropdownPanel.classList.remove('open');
       }
     });
   }

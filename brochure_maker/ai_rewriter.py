@@ -4,7 +4,7 @@ import os
 import httpx
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-MODEL = "anthropic/claude-sonnet-4"
+MODEL = "anthropic/claude-sonnet-4-6"
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 PROMPTS = {

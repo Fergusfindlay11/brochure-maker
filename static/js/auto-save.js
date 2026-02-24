@@ -1,7 +1,11 @@
 /**
  * Auto-Save & State Persistence
- * Saves editor state (all contenteditable text, images, styles) every 30s.
- * Restores state on page load if available.
+ * Saves editor state (all contenteditable text, images, map SVGs, styles)
+ * every 30s. Restores state on page load if available.
+ *
+ * All elements are matched by a stable `data-save-id` attribute rather than
+ * array index, so adding/removing DOM nodes (e.g. map generation removing
+ * .img-placeholder) cannot shift other elements' restore targets.
  */
 document.addEventListener('DOMContentLoaded', function () {
   var SAVE_INTERVAL = 30000; // 30 seconds
@@ -13,6 +17,34 @@ document.addEventListener('DOMContentLoaded', function () {
   var debounceTimer = null;
   var lastSavedHash = '';
   var indicator = null;
+
+  // ── Assign stable data-save-id to every persistable element ──
+  (function assignSaveIds() {
+    document.querySelectorAll('.slide-wrapper').forEach(function (slide) {
+      var slideId = slide.id || '';
+
+      // contenteditable elements
+      slide.querySelectorAll('[contenteditable="true"]').forEach(function (el, i) {
+        if (!el.getAttribute('data-save-id')) {
+          el.setAttribute('data-save-id', slideId + '__ce__' + i);
+        }
+      });
+
+      // img-placeholder elements
+      slide.querySelectorAll('.img-placeholder').forEach(function (el, i) {
+        if (!el.getAttribute('data-save-id')) {
+          el.setAttribute('data-save-id', slideId + '__ph__' + i);
+        }
+      });
+
+      // map-area (even after it loses .img-placeholder)
+      slide.querySelectorAll('.map-area').forEach(function (el, i) {
+        if (!el.getAttribute('data-save-id')) {
+          el.setAttribute('data-save-id', slideId + '__map__' + i);
+        }
+      });
+    });
+  })();
 
   // Create save indicator in nav bar
   var nav = document.querySelector('.slide-nav');
@@ -57,36 +89,46 @@ document.addEventListener('DOMContentLoaded', function () {
   function serializeState() {
     var state = {};
 
-    // Capture all contenteditable text content
-    var editables = document.querySelectorAll('[contenteditable="true"]');
-    var texts = [];
-    editables.forEach(function (el) {
-      var slideWrapper = el.closest('.slide-wrapper');
-      var slideId = slideWrapper ? slideWrapper.id : '';
-      var classList = Array.from(el.classList).join(' ');
-      texts.push({
-        slideId: slideId,
-        classes: classList,
-        html: el.innerHTML,
-      });
+    // ── Editable texts — keyed by data-save-id ──
+    var editableTexts = {};
+    document.querySelectorAll('[contenteditable="true"]').forEach(function (el) {
+      var saveId = el.getAttribute('data-save-id');
+      if (!saveId) return; // skip elements without an ID
+      editableTexts[saveId] = { html: el.innerHTML };
     });
-    state.editableTexts = texts;
+    state.editableTexts = editableTexts;
 
-    // Capture background images and positions
-    var images = [];
-    document.querySelectorAll('.img-placeholder').forEach(function (el) {
-      var slideWrapper = el.closest('.slide-wrapper');
-      images.push({
-        slideId: slideWrapper ? slideWrapper.id : '',
+    // ── Background images — keyed by data-save-id ──
+    // Capture from .img-placeholder elements AND any element with a
+    // data-save-id that contains '__ph__' (in case class was removed)
+    var images = {};
+    document.querySelectorAll('.img-placeholder, [data-save-id*="__ph__"]').forEach(function (el) {
+      var saveId = el.getAttribute('data-save-id');
+      if (!saveId) return;
+      images[saveId] = {
         bgImage: el.style.backgroundImage || '',
         bgPosition: el.style.backgroundPosition || '',
         bgSize: el.style.backgroundSize || '',
         bgX: el.getAttribute('data-bg-x') || '',
         bgY: el.getAttribute('data-bg-y') || '',
         bgZoom: el.getAttribute('data-bg-zoom') || '',
-      });
+      };
     });
     state.images = images;
+
+    // ── Map SVGs — keyed by data-save-id of .map-area ──
+    var mapSvg = {};
+    document.querySelectorAll('.map-area').forEach(function (el) {
+      var saveId = el.getAttribute('data-save-id');
+      if (!saveId) return;
+      if (el.classList.contains('map-loaded')) {
+        var svg = el.querySelector('svg');
+        if (svg) {
+          mapSvg[saveId] = { svgContent: svg.outerHTML };
+        }
+      }
+    });
+    state.mapSvg = mapSvg;
 
     // Capture colour scheme
     var root = document.documentElement;
@@ -147,29 +189,53 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function applyState(state) {
-    // Restore editable text content
-    if (state.editableTexts) {
-      var editables = document.querySelectorAll('[contenteditable="true"]');
-      state.editableTexts.forEach(function (saved, idx) {
-        // Match by index (order should be stable for same slide structure)
-        if (editables[idx]) {
-          editables[idx].innerHTML = saved.html;
-        }
+    // ── Restore editable text — match by data-save-id ──
+    if (state.editableTexts && typeof state.editableTexts === 'object' && !Array.isArray(state.editableTexts)) {
+      Object.keys(state.editableTexts).forEach(function (saveId) {
+        var el = document.querySelector('[data-save-id="' + saveId + '"]');
+        if (el) el.innerHTML = state.editableTexts[saveId].html;
       });
     }
 
-    // Restore background images
-    if (state.images) {
-      var placeholders = document.querySelectorAll('.img-placeholder');
-      state.images.forEach(function (saved, idx) {
-        if (placeholders[idx] && saved.bgImage) {
-          placeholders[idx].style.backgroundImage = saved.bgImage;
-          if (saved.bgPosition) placeholders[idx].style.backgroundPosition = saved.bgPosition;
-          if (saved.bgSize) placeholders[idx].style.backgroundSize = saved.bgSize;
-          if (saved.bgX) placeholders[idx].setAttribute('data-bg-x', saved.bgX);
-          if (saved.bgY) placeholders[idx].setAttribute('data-bg-y', saved.bgY);
-          if (saved.bgZoom) placeholders[idx].setAttribute('data-bg-zoom', saved.bgZoom);
-        }
+    // ── Restore background images — match by data-save-id ──
+    if (state.images && typeof state.images === 'object' && !Array.isArray(state.images)) {
+      Object.keys(state.images).forEach(function (saveId) {
+        var el = document.querySelector('[data-save-id="' + saveId + '"]');
+        if (!el) return;
+        var saved = state.images[saveId];
+        if (saved.bgImage) el.style.backgroundImage = saved.bgImage;
+        if (saved.bgPosition) el.style.backgroundPosition = saved.bgPosition;
+        if (saved.bgSize) el.style.backgroundSize = saved.bgSize;
+        if (saved.bgX) el.setAttribute('data-bg-x', saved.bgX);
+        if (saved.bgY) el.setAttribute('data-bg-y', saved.bgY);
+        if (saved.bgZoom) el.setAttribute('data-bg-zoom', saved.bgZoom);
+      });
+    }
+
+    // ── Restore map SVG — match by data-save-id ──
+    if (state.mapSvg && typeof state.mapSvg === 'object') {
+      Object.keys(state.mapSvg).forEach(function (saveId) {
+        var mapArea = document.querySelector('[data-save-id="' + saveId + '"]');
+        if (!mapArea) return;
+        var content = (state.mapSvg[saveId] || {}).svgContent;
+        if (!content) return;
+
+        // Sanitise: only inject if content starts with '<svg'
+        var trimmed = content.trimStart();
+        if (trimmed.substring(0, 4).toLowerCase() !== '<svg') return;
+
+        // Hide placeholder content
+        mapArea.querySelectorAll('.ph-icon, .ph-label').forEach(function (e) {
+          e.style.display = 'none';
+        });
+        var btn = mapArea.querySelector('.map-generate-btn');
+        if (btn) btn.style.display = 'none';
+        mapArea.classList.remove('img-placeholder');
+        mapArea.innerHTML = content;
+        mapArea.style.backgroundImage = 'none';
+        mapArea.style.background = 'transparent';
+        mapArea.classList.add('map-loaded');
+        mapArea.style.border = 'none';
       });
     }
   }

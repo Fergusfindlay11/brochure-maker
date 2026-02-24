@@ -11,6 +11,18 @@
     <input class="settings-input" id="bldgLocationInput" type="text" value="{{ location }}" placeholder="e.g. Islington">
   </div>
   <div class="settings-row">
+    <label>Street Address</label>
+    <input class="settings-input" id="bldgAddressInput" type="text" value="{{ address | default('') }}" placeholder="e.g. 10 Caledonian Road">
+  </div>
+  <div class="settings-row">
+    <label>Postcode</label>
+    <input class="settings-input" id="bldgPostcodeInput" type="text" value="{{ postcode | default('') }}" placeholder="e.g. N1 9DP">
+  </div>
+  <div class="settings-row" style="align-items:center;gap:10px;flex-wrap:wrap;">
+    <button class="settings-geocode-btn" id="geocodeBtn">&#128205; Save Location</button>
+    <span class="settings-geocode-status" id="geocodeStatus"></span>
+  </div>
+  <div class="settings-row">
     <label>Cover Subtitle</label>
     <input class="settings-input" id="bldgSubtitleInput" type="text" value="{{ subtitle }}" placeholder="e.g. I S L I N G T O N">
   </div>

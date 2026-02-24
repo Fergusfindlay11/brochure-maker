@@ -120,8 +120,14 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Attach to all existing dots
-  document.querySelectorAll('.t-dot[data-line]').forEach(attachDotClickHandler);
+  // Attach to all existing dots and populate abbreviations
+  document.querySelectorAll('.t-dot[data-line]').forEach(function (dot) {
+    attachDotClickHandler(dot);
+    var lineId = dot.dataset.line;
+    if (LINE_MAP[lineId] && !dot.textContent.trim()) {
+      dot.textContent = LINE_MAP[lineId].abbr;
+    }
+  });
 
   // Add line button
   document.querySelectorAll('.add-line-btn').forEach(function (btn) {
