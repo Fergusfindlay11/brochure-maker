@@ -7,8 +7,8 @@ from brochure_maker.map_pipeline.models import (
     StyleTokens,
 )
 from brochure_maker.map_pipeline.style_director import generate_style
+from brochure_maker.geometry import MercatorProjection
 from brochure_maker.map_pipeline.svg_renderer import (
-    MercatorProjection,
     render_svg,
     compute_svg_hash,
 )
