@@ -6,3 +6,9 @@ httpx==0.28.1
 jinja2==3.1.5
 python-dotenv==1.0.1
 Pillow==11.1.0
+pydantic>=2.0.0
+
+# V1 Map Pipeline — optional dependencies
+# duckdb>=1.0.0               # Local POI store (install when using Overture data)
+# cairosvg>=2.7.0             # PDF export fallback (prefer librsvg/rsvg-convert)
+# PyGObject>=3.42.0           # Pango text metrics (recommended for precise measurements)
