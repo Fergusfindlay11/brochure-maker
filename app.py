@@ -11,10 +11,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from pydantic import ValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import StreamingResponse
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 from brochure_maker.pdf_extractor import extract_pdf
 from brochure_maker.ai_analyser import analyse_brochure, analyse_brochure_streaming
@@ -23,6 +24,14 @@ from brochure_maker.ai_rewriter import rewrite_text
 from brochure_maker.ai_chat import chat_with_brochure
 from brochure_maker.map_generator import generate_neighbourhood_map
 from brochure_maker.pdf_renderer import render_pdf, HAS_PLAYWRIGHT
+from brochure_maker.map_v1 import (
+    MapV1Service,
+    MapStyleGenerateRequestV1,
+    MapRenderRequestV1,
+)
+from brochure_maker.map_v1.config import MAP_V1_ENABLED
+from brochure_maker.map_v1.pdf_export import assert_pdf_runtime_ready
+from brochure_maker.map_v1.service import map_http_exception
 from brochure_maker.template_manager import (
     save_template,
     load_template,
@@ -33,6 +42,7 @@ from brochure_maker.template_manager import (
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_DIR = BASE_DIR / "projects"
 PROJECTS_DIR.mkdir(exist_ok=True)
+map_v1_service = MapV1Service(PROJECTS_DIR) if MAP_V1_ENABLED else None
 
 app = FastAPI(title="Brochure Maker", version="1.0.0")
 
@@ -49,6 +59,13 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 # In-memory project status tracking
 project_status = {}  # type: dict
+
+
+@app.on_event("startup")
+async def _map_v1_startup_checks() -> None:
+    """Fail-fast checks for map-v1 PDF typography support."""
+    if MAP_V1_ENABLED:
+        assert_pdf_runtime_ready()
 
 
 # ──────────────────────────────────────────────
@@ -560,6 +577,91 @@ async def geocode_building(project_id: str, request: Request):
 
     display_name = ", ".join(filter(None, [street, postcode, city]))
     return JSONResponse({"lat": lat, "lng": lng, "display_name": display_name})
+
+
+# ──────────────────────────────────────────────
+#  Map V1 — Style + Render APIs
+# ──────────────────────────────────────────────
+@app.post("/api/maps/v1/style/generate")
+async def map_v1_generate_style(request: Request):
+    """Generate deterministic style tokens from brochure colour + optional vibe/image."""
+    if not MAP_V1_ENABLED or map_v1_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DATASET_UNAVAILABLE",
+                "message": "Map V1 is disabled",
+                "hint": "Enable MAP_V1_ENABLED=1 to use v1 map APIs.",
+                "retryable": False,
+            },
+        )
+
+    try:
+        payload = MapStyleGenerateRequestV1(**(await request.json()))
+        result = map_v1_service.generate_style(payload)
+        return JSONResponse(result.model_dump(mode="json"))
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "STYLE_VALIDATION_FAILED",
+                "message": "Invalid style request payload",
+                "hint": "Provide brochure_primary_hex and valid optional vibe/image fields.",
+                "retryable": False,
+                "errors": e.errors(),
+            },
+        )
+    except Exception as e:
+        status, detail = map_http_exception(e)
+        raise HTTPException(status_code=status, detail=detail)
+
+
+@app.post("/api/maps/v1/render")
+async def map_v1_render(request: Request):
+    """Render deterministic SVG+PDF map artifacts from resolved style_tokens."""
+    if not MAP_V1_ENABLED or map_v1_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DATASET_UNAVAILABLE",
+                "message": "Map V1 is disabled",
+                "hint": "Enable MAP_V1_ENABLED=1 to use v1 map APIs.",
+                "retryable": False,
+            },
+        )
+
+    try:
+        payload = MapRenderRequestV1(**(await request.json()))
+        result = map_v1_service.render(payload)
+        return JSONResponse(result.model_dump(mode="json"))
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "STYLE_VALIDATION_FAILED",
+                "message": "Invalid render request payload",
+                "hint": "Send center/content or project_id plus resolved style_tokens.",
+                "retryable": False,
+                "errors": e.errors(),
+            },
+        )
+    except Exception as e:
+        status, detail = map_http_exception(e)
+        raise HTTPException(status_code=status, detail=detail)
+
+
+@app.get("/api/projects/{project_id}/maps/v1/{map_id}/{filename}")
+async def map_v1_serve_artifact(project_id: str, map_id: str, filename: str):
+    """Serve map-v1 generated artifacts."""
+    allowed = {"map.svg": "image/svg+xml", "map.pdf": "application/pdf", "metadata.json": "application/json", "style_tokens.json": "application/json"}
+    if filename not in allowed:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    artifact_path = PROJECTS_DIR / project_id / "maps_v1" / map_id / filename
+    if not artifact_path.exists():
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    return FileResponse(str(artifact_path), media_type=allowed[filename], filename=filename)
 
 
 # ──────────────────────────────────────────────
