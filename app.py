@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import uuid
@@ -29,6 +30,17 @@ from brochure_maker.template_manager import (
     list_templates,
     delete_template,
 )
+
+# V1 Map Pipeline imports
+from brochure_maker.map_pipeline.models import (
+    MapStyleGenerateRequestV1,
+    MapStyleGenerateResponseV1,
+    MapRenderRequestV1,
+    MapRenderResponseV1,
+)
+from brochure_maker.map_pipeline.style_director import generate_style
+from brochure_maker.map_pipeline.orchestrator import render_map
+from brochure_maker.map_pipeline.errors import MapPipelineError
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_DIR = BASE_DIR / "projects"
@@ -634,6 +646,62 @@ async def generate_map(project_id: str, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Map generation failed: {e}")
+
+
+# ──────────────────────────────────────────────
+#  V1 Map Pipeline: Style Generation
+# ──────────────────────────────────────────────
+@app.post("/api/maps/v1/style/generate")
+async def map_style_generate(request: MapStyleGenerateRequestV1):
+    """Generate deterministic style tokens from brochure primary colour.
+
+    Same inputs + same style model/version always return identical tokens.
+    """
+    try:
+        response = generate_style(request)
+        return JSONResponse(response.model_dump())
+    except MapPipelineError as e:
+        raise HTTPException(status_code=400, detail=e.to_dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Style generation failed: {e}")
+
+
+# ──────────────────────────────────────────────
+#  V1 Map Pipeline: Render
+# ──────────────────────────────────────────────
+@app.post("/api/maps/v1/render")
+async def map_render(request: MapRenderRequestV1):
+    """Render a map using resolved style_tokens.
+
+    Raw vibe_text and style_image_ref are explicitly disallowed.
+    Returns SVG content, optional PDF, metadata, and warnings.
+    """
+    try:
+        # Create artifacts directory for this render
+        render_id = str(uuid.uuid4())[:8]
+        artifacts_dir = PROJECTS_DIR / "_renders" / render_id
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        response = await render_map(request, artifacts_dir=artifacts_dir)
+        return JSONResponse(response.model_dump())
+    except MapPipelineError as e:
+        raise HTTPException(status_code=400, detail=e.to_dict())
+    except Exception as e:
+        logging.getLogger(__name__).exception("Map render failed")
+        raise HTTPException(status_code=500, detail=f"Map render failed: {e}")
+
+
+# ──────────────────────────────────────────────
+#  V1 Map Pipeline: Render artifacts
+# ──────────────────────────────────────────────
+@app.get("/api/maps/v1/renders/{render_id}/{filename}")
+async def serve_map_render(render_id: str, filename: str):
+    """Serve a rendered map artifact (SVG or PDF)."""
+    filepath = PROJECTS_DIR / "_renders" / render_id / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Render artifact not found")
+    media_type = "image/svg+xml" if filename.endswith(".svg") else "application/pdf"
+    return FileResponse(str(filepath), media_type=media_type)
 
 
 # ──────────────────────────────────────────────

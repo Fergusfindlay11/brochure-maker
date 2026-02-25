@@ -134,6 +134,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var root = document.documentElement;
     state.primaryColour = getComputedStyle(root).getPropertyValue('--primary').trim();
 
+    // ── V1 Map Pipeline: persist style tokens and hash ──
+    if (window.__mapStyleTokens) {
+      state.mapStyleTokens = window.__mapStyleTokens;
+      state.mapStyleHash = window.__mapStyleHash || '';
+    }
+
     return state;
   }
 
@@ -237,6 +243,12 @@ document.addEventListener('DOMContentLoaded', function () {
         mapArea.classList.add('map-loaded');
         mapArea.style.border = 'none';
       });
+    }
+
+    // ── Restore V1 Map Pipeline style tokens ──
+    if (state.mapStyleTokens) {
+      window.__mapStyleTokens = state.mapStyleTokens;
+      window.__mapStyleHash = state.mapStyleHash || '';
     }
   }
 
