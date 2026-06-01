@@ -226,6 +226,12 @@ def _extract_fonts(pdf_path: Path, fonts_dir: Path, project_id: str) -> str:
                     if converted:
                         font_bytes = converted
                         output_ext = "otf"
+                # PDF-embedded subsets often have misaligned/odd tables (e.g. an
+                # unaligned `fpgm`) that the browser font sanitizer (OTS) rejects
+                # even though fontTools parses them. Re-lay-out the sfnt with
+                # proper 4-byte alignment so condensed/display fonts actually load
+                # instead of silently falling back to a wider system font.
+                font_bytes = _sanitize_embedded_font(font_bytes, output_ext)
                 filename = f"{safe_name}.{output_ext}"
                 (fonts_dir / filename).write_bytes(font_bytes)
                 if not _font_has_browser_usable_cmap(font_bytes, output_ext):
@@ -251,6 +257,36 @@ def _extract_fonts(pdf_path: Path, fonts_dir: Path, project_id: str) -> str:
         doc.close()
 
     return "\n".join(rules)
+
+
+def _sanitize_embedded_font(font_bytes: bytes, output_ext: str) -> bytes:
+    """Normalise an extracted sfnt font so browsers accept it.
+
+    PDF font subsets frequently fail the browser OpenType Sanitizer (OTS) with
+    errors such as "fpgm: misaligned table" because the embedded stream keeps
+    the PDF's table packing. Re-saving through fontTools rewrites the table
+    directory with correct 4-byte alignment and recalculated checksums, and we
+    drop hinting/program tables that are unnecessary for screen rendering and
+    are the usual source of OTS rejections. Falls back to the original bytes if
+    anything goes wrong, so a quirky font can never break extraction.
+    """
+    if output_ext not in ("ttf", "otf"):
+        return font_bytes
+    try:
+        import io
+
+        from fontTools.ttLib import TTFont
+
+        font = TTFont(io.BytesIO(font_bytes))
+        for table in ("fpgm", "prep", "cvt ", "gasp", "hdmx", "LTSH", "VDMX", "TTFA"):
+            if table in font:
+                del font[table]
+        buffer = io.BytesIO()
+        font.save(buffer)
+        sanitised = buffer.getvalue()
+        return sanitised if sanitised else font_bytes
+    except Exception:
+        return font_bytes
 
 
 def _font_has_browser_usable_cmap(font_bytes: bytes, ext: str | None = None) -> bool:
