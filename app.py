@@ -1012,6 +1012,7 @@ def _strip_exact_editor_markup(soup: Any) -> None:
         for token in (
             "exact-toolbar",
             "exact-fields-panel",
+            "icon-picker-overlay",
             "slot-chip",
             "slot-controls",
             "exact-map-controls",
@@ -1026,6 +1027,24 @@ def _strip_exact_editor_markup(soup: Any) -> None:
     for node in soup.select("[contenteditable]"):
         node.attrs.pop("contenteditable", None)
         node.attrs.pop("spellcheck", None)
+    # Strip script-only editor bookkeeping attributes so the clean export
+    # carries no save/restore machinery. NOTE: data-save-id is intentionally
+    # retained because the generated per-page typography CSS targets
+    # `.pdf-text[data-save-id="..."]`; it is inert once the editor scripts are
+    # removed, but removing it would drop those style rules.
+    _EXPORT_STRIP_ATTRS = (
+        "data-slot-id",
+        "data-edited",
+        "data-original-html",
+        "data-plain-text",
+        "data-model-text-source",
+        "data-ocr-fallback",
+    )
+    for node in soup.select(
+        ", ".join(f"[{attr}]" for attr in _EXPORT_STRIP_ATTRS)
+    ):
+        for attr in _EXPORT_STRIP_ATTRS:
+            node.attrs.pop(attr, None)
     for node in soup.select(".pdf-text [style]"):
         _remove_exact_text_style_overrides(node)
     for node in soup.select(".pdf-text font"):
