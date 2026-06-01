@@ -15,6 +15,32 @@ try:
 except ImportError:
     HAS_PLAYWRIGHT = False
 
+def _playwright_chromium_executable() -> Optional[str]:
+    """Locate Playwright's bundled Chromium so headless tooling works even when
+    no system Chrome is installed (the common case in CI/containers)."""
+    import glob
+
+    roots = [
+        os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "",
+        "/opt/pw-browsers",
+        str(Path.home() / ".cache" / "ms-playwright"),
+        "/root/.cache/ms-playwright",
+    ]
+    patterns = (
+        "chromium-*/chrome-linux/chrome",
+        "chromium_headless_shell-*/chrome-linux/headless_shell",
+        "chromium-*/chrome-linux/headless_shell",
+    )
+    for root in roots:
+        if not root:
+            continue
+        for pattern in patterns:
+            for candidate in sorted(glob.glob(os.path.join(root, pattern)), reverse=True):
+                if Path(candidate).exists():
+                    return candidate
+    return None
+
+
 CHROME_CLI = next(
     (
         candidate
@@ -22,6 +48,7 @@ CHROME_CLI = next(
             shutil.which("google-chrome"),
             shutil.which("chromium"),
             shutil.which("chromium-browser"),
+            _playwright_chromium_executable(),
             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             "/Applications/Chromium.app/Contents/MacOS/Chromium",
             "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
@@ -65,7 +92,7 @@ async def render_pdf(
         )
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         page = await browser.new_page()
 
         # Set the HTML content
@@ -146,6 +173,7 @@ def _render_pdf_with_chrome_cli(
         cmd = [
             str(CHROME_CLI),
             "--headless=new",
+            "--no-sandbox",
             "--disable-gpu",
             "--no-first-run",
             "--no-default-browser-check",

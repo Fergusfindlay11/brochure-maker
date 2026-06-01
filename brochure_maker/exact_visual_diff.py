@@ -222,6 +222,7 @@ def _render_clean_export_page(
             cmd = [
                 str(CHROME_CLI),
                 headless_flag,
+                "--no-sandbox",
                 "--disable-gpu",
                 "--disable-dev-shm-usage",
                 "--disable-extensions",

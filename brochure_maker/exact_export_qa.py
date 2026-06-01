@@ -173,7 +173,7 @@ def _post_pdf(url: str, blockers: list[str]) -> bytes:
 
 def _html_export_summary(html: str, expected_pages: int) -> dict[str, Any]:
     return {
-        "pageCount": len(re.findall(r'class=["\'][^"\']*\bexact-page\b', html)),
+        "pageCount": len(re.findall(r'class=["\'][^"\']*\bexact-page(?![-\w])', html)),
         "expectedPageCount": expected_pages,
         "contenteditableCount": len(re.findall(r"\bcontenteditable\b", html, flags=re.IGNORECASE)),
         "fileInputCount": len(re.findall(r'<input\b[^>]*type=["\']file["\']', html, flags=re.IGNORECASE)),

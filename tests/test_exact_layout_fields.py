@@ -1189,7 +1189,7 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         amenity_values = [field["value"] for field in config["amenities"]]
         self.assertIn("Rooftop Terrace", amenity_values)
         self.assertIn("Secure Bike Store", amenity_values)
-        self.assertEqual(next(field for field in config["amenities"] if field["value"] == "Secure Bike Store")["icon_id"], "bicycle")
+        self.assertEqual(next(field for field in config["amenities"] if field["value"] == "Secure Bike Store")["icon_id"], "bike")
         self.assertEqual(config["contacts"][0]["name"], "Nina Carter")
         self.assertEqual(config["contacts"][0]["targets"], ["p3-contact"])
         self.assertIn("agency1", config["agency_logos"])

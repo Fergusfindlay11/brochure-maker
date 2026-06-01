@@ -226,6 +226,12 @@ def _extract_fonts(pdf_path: Path, fonts_dir: Path, project_id: str) -> str:
                     if converted:
                         font_bytes = converted
                         output_ext = "otf"
+                # PDF-embedded subsets often have misaligned/odd tables (e.g. an
+                # unaligned `fpgm`) that the browser font sanitizer (OTS) rejects
+                # even though fontTools parses them. Re-lay-out the sfnt with
+                # proper 4-byte alignment so condensed/display fonts actually load
+                # instead of silently falling back to a wider system font.
+                font_bytes = _sanitize_embedded_font(font_bytes, output_ext)
                 filename = f"{safe_name}.{output_ext}"
                 (fonts_dir / filename).write_bytes(font_bytes)
                 if not _font_has_browser_usable_cmap(font_bytes, output_ext):
@@ -251,6 +257,36 @@ def _extract_fonts(pdf_path: Path, fonts_dir: Path, project_id: str) -> str:
         doc.close()
 
     return "\n".join(rules)
+
+
+def _sanitize_embedded_font(font_bytes: bytes, output_ext: str) -> bytes:
+    """Normalise an extracted sfnt font so browsers accept it.
+
+    PDF font subsets frequently fail the browser OpenType Sanitizer (OTS) with
+    errors such as "fpgm: misaligned table" because the embedded stream keeps
+    the PDF's table packing. Re-saving through fontTools rewrites the table
+    directory with correct 4-byte alignment and recalculated checksums, and we
+    drop hinting/program tables that are unnecessary for screen rendering and
+    are the usual source of OTS rejections. Falls back to the original bytes if
+    anything goes wrong, so a quirky font can never break extraction.
+    """
+    if output_ext not in ("ttf", "otf"):
+        return font_bytes
+    try:
+        import io
+
+        from fontTools.ttLib import TTFont
+
+        font = TTFont(io.BytesIO(font_bytes))
+        for table in ("fpgm", "prep", "cvt ", "gasp", "hdmx", "LTSH", "VDMX", "TTFA"):
+            if table in font:
+                del font[table]
+        buffer = io.BytesIO()
+        font.save(buffer)
+        sanitised = buffer.getvalue()
+        return sanitised if sanitised else font_bytes
+    except Exception:
+        return font_bytes
 
 
 def _font_has_browser_usable_cmap(font_bytes: bytes, ext: str | None = None) -> bool:
@@ -580,6 +616,15 @@ def _extract_pages(
             body += "\n" + _render_image_slots(page_num, image_slots)
             if source_preserved_edit:
                 body = _suppress_source_preserved_interaction_hotspots(body, width, height)
+            if page_num <= len(doc) and not image_only_page and not source_preserved_edit:
+                # Erase baked text now that every visible span is an editable overlay,
+                # so editing/recolouring never reveals the original glyphs underneath.
+                _redact_baked_overlay_text(
+                    doc[page_num - 1],
+                    assets_dir / full_background,
+                    width,
+                    height,
+                )
             pages.append(
                 {
                     "page_num": page_num,
@@ -1600,6 +1645,88 @@ def _render_full_page_background(
     return output.name
 
 
+def _redact_baked_overlay_text(
+    page: fitz.Page,
+    background_full_path: Path,
+    width: int,
+    height: int,
+) -> int:
+    """Paint over text that is baked into the full-page background plate.
+
+    Every visible text span is re-emitted as an editable contenteditable overlay,
+    so the same glyphs must not also remain burned into the background image
+    (otherwise edits/recolours reveal the original text underneath — a double
+    render). We erase each PDF text word from the plate using a colour sampled
+    from just outside the word box, so flat brochure backgrounds stay seamless
+    while the editable overlay becomes the single source of truth.
+
+    Returns the number of word boxes redacted (0 when there is no vector text,
+    e.g. image-only/scanned pages that rely on OCR overlays instead).
+    """
+    try:
+        words = page.get_text("words")
+    except Exception:
+        return 0
+    if not words:
+        return 0
+
+    from PIL import Image, ImageDraw
+
+    page_width = float(page.rect.width) or 1.0
+    page_height = float(page.rect.height) or 1.0
+    scale_x = width / page_width
+    scale_y = height / page_height
+
+    with Image.open(background_full_path) as raw:
+        image = raw.convert("RGB")
+        img_w, img_h = image.size
+        getpixel = image.getpixel
+        draw = ImageDraw.Draw(image)
+
+        def _sample_local_background(left: int, top: int, right: int, bottom: int) -> tuple[int, int, int]:
+            margin = 3
+            cx = (left + right) // 2
+            cy = (top + bottom) // 2
+            probes = [
+                (left - margin, cy),
+                (right + margin, cy),
+                (cx, top - margin),
+                (cx, bottom + margin),
+                (left - margin, top - margin),
+                (right + margin, bottom + margin),
+            ]
+            samples = [
+                getpixel((px, py))
+                for px, py in probes
+                if 0 <= px < img_w and 0 <= py < img_h
+            ]
+            if not samples:
+                return getpixel((min(img_w - 1, max(0, left)), min(img_h - 1, max(0, top))))
+            mid = len(samples) // 2
+            return tuple(sorted(channel)[mid] for channel in zip(*samples))
+
+        redacted = 0
+        for word in words:
+            x0, y0, x1, y1 = (float(word[0]), float(word[1]), float(word[2]), float(word[3]))
+            left = int(x0 * scale_x) - 1
+            top = int(y0 * scale_y) - 1
+            right = int(x1 * scale_x) + 1
+            bottom = int(y1 * scale_y) + 1
+            left = max(0, min(img_w, left))
+            right = max(0, min(img_w, right))
+            top = max(0, min(img_h, top))
+            bottom = max(0, min(img_h, bottom))
+            if right <= left or bottom <= top:
+                continue
+            fill = _sample_local_background(left, top, right, bottom)
+            draw.rectangle([left, top, right - 1, bottom - 1], fill=fill)
+            redacted += 1
+
+        image.save(background_full_path)
+
+    return redacted
+
+
 def _image_slots_for_page(
     page: fitz.Page,
     css_width: int,
@@ -1998,6 +2125,17 @@ def _refine_image_slots_with_raster_components(background_path: Path, slots: lis
     components = _detect_photo_components(background_path)
     if not components or not slots:
         return slots
+    # Full-bleed photos are best trusted from the model bbox: raster component
+    # detection misses bright bands (ceilings, skies, white walls), so re-cropping
+    # a page-filling image shrinks it and exposes the page background colour.
+    page_area = 1.0
+    try:
+        from PIL import Image
+
+        with Image.open(background_path) as _bg:
+            page_area = max(1.0, float(_bg.width) * float(_bg.height))
+    except Exception:
+        page_area = 1.0
     slot_rects = [
         {key: float(slot.get(key) or 0) for key in ("left", "top", "width", "height")}
         for slot in slots
@@ -2007,6 +2145,9 @@ def _refine_image_slots_with_raster_components(background_path: Path, slots: lis
     for slot in slots:
         slot_rect = {key: float(slot.get(key) or 0) for key in ("left", "top", "width", "height")}
         slot_area = max(1.0, slot_rect["width"] * slot_rect["height"])
+        if slot_area / page_area >= 0.85:
+            refined.append(slot)
+            continue
         best_index: int | None = None
         best_component: dict[str, float] | None = None
         best_score = 0.0
@@ -6815,44 +6956,104 @@ def _looks_like_amenity_label(value: str) -> bool:
 
 
 def _icon_for_amenity(value: str) -> str:
+    """Map an amenity label to an icon id that exists in EXACT_ICON_LIBRARY.
+
+    Every branch returns a key present in the icon bank so the chosen icon both
+    renders and is highlighted in the picker. Rules are generic keyword matches
+    (no per-brochure hardcoding); ``facade`` is the neutral building fallback.
+    """
     compact = _compact_text(value)
-    if "clean" in compact or "waste" in compact:
+    # Maintenance / cleaning / managed services
+    if "clean" in compact or "waste" in compact or "refuse" in compact:
         return "broom"
-    if "maint" in compact or "repair" in compact:
+    if "maint" in compact or "repair" in compact or "rates" in compact or "managed" in compact:
         return "gear"
-    if "snack" in compact:
+    # Wellbeing
+    if "snack" in compact or "fruit" in compact:
         return "apple"
-    if "health" in compact or "safety" in compact:
+    if "health" in compact or "safety" in compact or "wellbeing" in compact or "wellness" in compact:
         return "health"
-    if "broadband" in compact or "fibre" in compact or "fiber" in compact or "wifi" in compact:
-        return "wifi"
-    if "electric" in compact or "demiseelectric" in compact:
-        return "lightning"
-    if "rates" in compact or "businessrates" in compact:
-        return "rates"
-    if "foliage" in compact or "leaf" in compact or "plant" in compact:
-        return "leaf"
-    if "plug" in compact or "catb" in compact:
-        return "plug"
-    if "gym" in compact:
+    if "gym" in compact or "fitness" in compact or "exercise" in compact:
         return "gym"
-    if "lift" in compact:
+    # Connectivity
+    if (
+        "broadband" in compact
+        or "fibre" in compact
+        or "fiber" in compact
+        or "wifi" in compact
+        or "connectivity" in compact
+        or "internet" in compact
+    ):
+        return "fibre"
+    # Sustainability ratings (BREEAM / EPC / net zero / green)
+    if (
+        "breeam" in compact
+        or "epc" in compact
+        or "sustainab" in compact
+        or "netzero" in compact
+        or "carbon" in compact
+        or "green" in compact
+        or "foliage" in compact
+        or "leaf" in compact
+        or "plant" in compact
+    ):
+        return "leaf"
+    # EV charging / electrical supply (no dedicated EV icon -> plug/socket)
+    if "charg" in compact or "ev" == compact[:2] or "electricvehicle" in compact:
+        return "plug"
+    if (
+        "electric" in compact
+        or "power" in compact
+        or "phase" in compact
+        or "mains" in compact
+        or "plug" in compact
+        or "socket" in compact
+        or "catb" in compact
+        or "cabling" in compact
+    ):
+        return "plug"
+    # Vertical transport
+    if "lift" in compact or "elevator" in compact:
         return "lift"
-    if "shower" in compact:
+    # End-of-trip
+    if "shower" in compact or "changing" in compact or "endoftrip" in compact:
         return "shower"
-    if "bike" in compact or "cycle" in compact:
-        return "bicycle"
-    if "kitchen" in compact or "coffee" in compact or "tea" in compact:
+    if "bike" in compact or "cycle" in compact or "bicycle" in compact:
+        return "bike"
+    # Food & drink
+    if "kitchen" in compact:
+        return "kitchenette"
+    if "coffee" in compact or "barista" in compact or "tea" in compact:
         return "coffee"
-    if "air" in compact or "condition" in compact or "service" in compact:
-        return "lightning"
-    if "trunk" in compact or "desk" in compact or "perimeter" in compact:
-        return "desk"
-    if "facade" in compact or "period" in compact or "victorian" in compact:
-        return "warehouse"
-    if "meeting" in compact:
+    if "restaurant" in compact or "dining" in compact or "canteen" in compact:
+        return "restaurant"
+    if "wine" in compact or "bar" in compact:
+        return "wine"
+    if "hotel" in compact or "bed" in compact or "accommodation" in compact:
+        return "bed"
+    # Climate control
+    if (
+        "aircon" in compact
+        or "airconditioning" in compact
+        or "comfortcool" in compact
+        or "hvac" in compact
+        or "climate" in compact
+        or "heating" in compact
+        or "vrf" in compact
+        or "vav" in compact
+    ):
+        return "aircon"
+    # Floor servicing / fit-out
+    if "trunk" in compact or "desk" in compact or "perimeter" in compact or "raisedfloor" in compact or "floorbox" in compact:
+        return "trunking"
+    # Period / industrial character
+    if "ceiling" in compact or "warehouse" in compact or "exposed" in compact or "brick" in compact or "loft" in compact or "industrial" in compact:
+        return "refurbished"
+    if "facade" in compact or "period" in compact or "victorian" in compact or "heritage" in compact or "listed" in compact:
+        return "facade"
+    if "meeting" in compact or "boardroom" in compact or "collaborat" in compact:
         return "meeting"
-    return "office"
+    return "facade"
 
 
 def _compact_text(value: str) -> str:
