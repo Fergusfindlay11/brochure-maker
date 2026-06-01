@@ -2125,6 +2125,17 @@ def _refine_image_slots_with_raster_components(background_path: Path, slots: lis
     components = _detect_photo_components(background_path)
     if not components or not slots:
         return slots
+    # Full-bleed photos are best trusted from the model bbox: raster component
+    # detection misses bright bands (ceilings, skies, white walls), so re-cropping
+    # a page-filling image shrinks it and exposes the page background colour.
+    page_area = 1.0
+    try:
+        from PIL import Image
+
+        with Image.open(background_path) as _bg:
+            page_area = max(1.0, float(_bg.width) * float(_bg.height))
+    except Exception:
+        page_area = 1.0
     slot_rects = [
         {key: float(slot.get(key) or 0) for key in ("left", "top", "width", "height")}
         for slot in slots
@@ -2134,6 +2145,9 @@ def _refine_image_slots_with_raster_components(background_path: Path, slots: lis
     for slot in slots:
         slot_rect = {key: float(slot.get(key) or 0) for key in ("left", "top", "width", "height")}
         slot_area = max(1.0, slot_rect["width"] * slot_rect["height"])
+        if slot_area / page_area >= 0.85:
+            refined.append(slot)
+            continue
         best_index: int | None = None
         best_component: dict[str, float] | None = None
         best_score = 0.0
