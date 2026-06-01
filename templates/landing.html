@@ -137,6 +137,40 @@
     letter-spacing: 0.06em;
   }
   #fileInput { display: none; }
+  .mode-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .mode-btn {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 12px 14px;
+    cursor: pointer;
+    text-align: left;
+    font-family: 'Jost', sans-serif;
+    transition: all 0.18s;
+  }
+  .mode-btn strong {
+    display: block;
+    color: var(--text);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .mode-btn span {
+    display: block;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .mode-btn.active {
+    border-color: var(--primary);
+    background: rgba(184,113,78,0.12);
+  }
 
   /* Processing state */
   .processing-overlay {
@@ -258,6 +292,9 @@
   .status-complete { background: rgba(76,175,80,0.15); color: #66BB6A; }
   .status-processing { background: rgba(255,183,77,0.15); color: #FFB74D; }
   .status-error { background: rgba(239,83,80,0.15); color: #EF5350; }
+  .status-qa-pass { background: rgba(76,175,80,0.18); color: #76D47A; }
+  .status-qa-fail { background: rgba(239,83,80,0.18); color: #FF7A78; }
+  .status-qa-not-run { background: rgba(255,183,77,0.12); color: #D9A15E; }
   .card-actions {
     display: flex;
     gap: 6px;
@@ -273,6 +310,9 @@
     font-family: 'Jost', sans-serif;
     letter-spacing: 0.06em;
     transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
   }
   .card-btn:hover { background: rgba(255,255,255,0.1); color: white; }
   .card-btn.danger:hover { background: rgba(239,83,80,0.2); color: #EF5350; border-color: rgba(239,83,80,0.3); }
@@ -362,6 +402,16 @@
   <!-- Upload Section -->
   <div class="upload-section">
     <div class="section-title">Upload Brochure</div>
+    <div class="mode-toggle" aria-label="Upload mode">
+      <button class="mode-btn active" type="button" data-upload-mode="exact">
+        <strong>Exact layout</strong>
+        <span>Best for matching an existing brochure page-by-page.</span>
+      </button>
+      <button class="mode-btn" type="button" data-upload-mode="ai">
+        <strong>AI template</strong>
+        <span>Best for reusable structured brochure templates.</span>
+      </button>
+    </div>
     <div class="upload-zone" id="uploadZone">
       <div class="upload-icon">&#128196;</div>
       <div class="upload-text">
@@ -424,6 +474,15 @@
   const projectsList = document.getElementById('projectsList');
   const templatesList = document.getElementById('templatesList');
   const toast = document.getElementById('toast');
+  let uploadMode = 'exact';
+
+  document.querySelectorAll('[data-upload-mode]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      uploadMode = button.dataset.uploadMode || 'exact';
+      document.querySelectorAll('[data-upload-mode]').forEach((b) => b.classList.toggle('active', b === button));
+    });
+  });
 
   // ── Upload handling ──
   uploadZone.addEventListener('click', (e) => {
@@ -453,6 +512,13 @@
     }
   });
 
+  templatesList.addEventListener('click', (e) => {
+    const button = e.target.closest('.js-use-template');
+    if (!button) return;
+    e.stopPropagation();
+    selectTemplatePdf(button.dataset.templateDir, button.dataset.templateName);
+  });
+
   async function handleUpload(file) {
     processingOverlay.classList.add('active');
     uploadZone.classList.add('processing');
@@ -462,7 +528,8 @@
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const endpoint = uploadMode === 'exact' ? '/api/upload/exact' : '/api/upload';
+      const res = await fetch(endpoint, { method: 'POST', body: formData });
       const data = await res.json();
 
       if (!res.ok) {
@@ -470,10 +537,19 @@
       }
 
       const projectId = data.project_id;
-      updateProgress('Processing', 'Extracting content from PDF...', 25);
 
-      // Poll for status
-      pollStatus(projectId);
+      if (data.status === 'complete' && data.brochure_url) {
+        updateProgress('Complete', data.message || 'Your brochure is ready!', 100);
+        setTimeout(() => {
+          processingOverlay.classList.remove('active');
+          uploadZone.classList.remove('processing');
+          window.location.href = data.brochure_url;
+          loadProjects();
+        }, 800);
+      } else {
+        updateProgress('Processing', 'Extracting content from PDF...', 25);
+        pollStatus(projectId);
+      }
 
     } catch (err) {
       updateProgress('Error', err.message, 0);
@@ -484,7 +560,67 @@
     }
   }
 
-  function pollStatus(projectId) {
+  async function handleTemplateUpload(dirName, templateName, file) {
+    if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('Please choose a PDF file.');
+      return;
+    }
+
+    processingOverlay.classList.add('active');
+    uploadZone.classList.add('processing');
+    updateProgress('Uploading', `Uploading PDF for "${templateName}"...`, 10);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`/api/templates/${encodeURIComponent(dirName)}/apply`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Template apply failed');
+      }
+
+      updateProgress('Processing', data.message || 'Applying template and analysing PDF...', 25);
+      pollStatus(data.project_id, {
+        completeMessage: 'Your templated brochure is ready!'
+      });
+
+    } catch (err) {
+      updateProgress('Error', err.message, 0);
+      setTimeout(() => {
+        processingOverlay.classList.remove('active');
+        uploadZone.classList.remove('processing');
+      }, 3000);
+    }
+  }
+
+  function selectTemplatePdf(dirName, templateName) {
+    if (!dirName) {
+      showToast('Template is missing a directory reference.');
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,application/pdf';
+    input.style.display = 'none';
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (file) handleTemplateUpload(dirName, templateName || 'template', file);
+    });
+    document.body.appendChild(input);
+    input.click();
+    setTimeout(() => {
+      if (input.parentNode) input.remove();
+    }, 60000);
+  }
+
+  function pollStatus(projectId, options = {}) {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/projects/${projectId}/status/poll`);
@@ -497,17 +633,23 @@
           case 'analysing':
             updateProgress('AI Analysis', data.message, 55);
             break;
+          case 'cloning':
+            updateProgress('Cloning', data.message, 68);
+            break;
+          case 'verifying':
+            updateProgress('Verifying', data.message, 74);
+            break;
           case 'generating':
             updateProgress('Generating', data.message, 80);
             break;
           case 'complete':
-            updateProgress('Complete', 'Your brochure is ready!', 100);
+            updateProgress('Complete', options.completeMessage || 'Your brochure is ready!', 100);
             clearInterval(interval);
             setTimeout(() => {
               processingOverlay.classList.remove('active');
               uploadZone.classList.remove('processing');
               // Redirect to the brochure
-              window.open(data.brochure_url, '_blank');
+              window.location.href = data.brochure_url;
               loadProjects();
             }, 1200);
             break;
@@ -548,12 +690,12 @@
           <div class="card-icon">&#128196;</div>
           <div class="card-info">
             <div class="card-name">${escapeHtml(p.name)}</div>
-            <div class="card-meta">ID: ${p.id}</div>
+            <div class="card-meta">ID: ${p.id}${p.mode === 'exact_pdf_layout' ? ' · exact PDF layout' : ''}</div>
           </div>
-          <span class="card-status ${p.status === 'complete' ? 'status-complete' : p.status === 'error' ? 'status-error' : 'status-processing'}">${p.status}</span>
+          <span class="card-status ${projectBadgeClass(p)}">${projectBadgeText(p)}</span>
           <div class="card-actions">
-            ${p.has_brochure ? `<button class="card-btn primary" onclick="window.open('/api/projects/${p.id}/brochure','_blank');event.stopPropagation();">Open</button>` : ''}
-            ${p.has_brochure ? `<button class="card-btn" onclick="saveAsTemplate('${p.id}','${escapeHtml(p.name)}');event.stopPropagation();">Save Template</button>` : ''}
+            ${p.has_brochure ? `<a class="card-btn primary" href="/api/projects/${encodeURIComponent(p.id)}/brochure" aria-label="Open ${escapeHtml(p.name)}">Open</a>` : ''}
+            ${p.has_brochure && p.mode !== 'exact_pdf_layout' ? `<button class="card-btn" onclick="saveAsTemplate('${p.id}','${escapeHtml(p.name)}');event.stopPropagation();">Save Template</button>` : ''}
             <button class="card-btn danger" onclick="deleteProject('${p.id}');event.stopPropagation();">Delete</button>
           </div>
         </div>
@@ -580,9 +722,10 @@
           <div class="card-icon" style="background:${t.colour_primary}22; color:${t.colour_primary};">&#9648;</div>
           <div class="card-info">
             <div class="card-name">${escapeHtml(t.name)}</div>
-            <div class="card-meta">${t.slide_count} slides</div>
+            <div class="card-meta">${t.slide_count} slides · ${t.clone_plan?.minimum_confidence || 95}% clone gate</div>
           </div>
           <div class="card-actions">
+            <button class="card-btn primary js-use-template" data-template-dir="${escapeHtml(t.dir_name)}" data-template-name="${escapeHtml(t.name)}">Use Template</button>
             <button class="card-btn danger" onclick="deleteTemplateAction('${escapeHtml(t.dir_name)}');event.stopPropagation();">Delete</button>
           </div>
         </div>
@@ -591,6 +734,23 @@
     } catch (err) {
       templatesList.innerHTML = '<div class="empty-state">Failed to load templates.</div>';
     }
+  }
+
+  function projectBadgeClass(project) {
+    if (project.qa_status === 'passed') return 'status-qa-pass';
+    if (project.qa_status === 'failed') return 'status-qa-fail';
+    if (project.mode === 'exact_pdf_layout' && project.status === 'complete') return 'status-qa-not-run';
+    return project.status === 'complete' ? 'status-complete' : project.status === 'error' ? 'status-error' : 'status-processing';
+  }
+
+  function projectBadgeText(project) {
+    if (project.qa_status === 'passed') {
+      const score = Number(project.qa_score || 0);
+      return score ? `QA ${score.toFixed(1)}` : 'QA PASS';
+    }
+    if (project.qa_status === 'failed') return 'QA FAIL';
+    if (project.mode === 'exact_pdf_layout' && project.status === 'complete') return 'GENERATED';
+    return String(project.status || 'unknown').toUpperCase();
   }
 
   // ── Actions ──

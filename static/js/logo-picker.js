@@ -52,6 +52,13 @@ document.addEventListener('DOMContentLoaded', function () {
   // The current active logo (null = grid, string = svg html, or dataUrl for uploads)
   var currentLogoType = 'grid'; // 'grid' | 'svg:KEY' | 'upload'
   var uploadedLogoDataUrl = null;
+  var coverLogoPosition = 'center';
+
+  function requestLogoAutosave() {
+    if (window.requestBrochureAutoSave) {
+      window.requestBrochureAutoSave(true);
+    }
+  }
 
   function buildGridContent(size) {
     if (size === 'large') {
@@ -107,6 +114,7 @@ document.addEventListener('DOMContentLoaded', function () {
         currentLogoType = 'svg:' + key;
         applyLogoToAll('svg', LOGO_MARKS[key]);
       }
+      requestLogoAutosave();
     });
   });
 
@@ -135,6 +143,7 @@ document.addEventListener('DOMContentLoaded', function () {
       logoUploadBtn.innerHTML = '<img src="' + uploadedLogoDataUrl + '" style="width:36px;height:36px;object-fit:contain;filter:brightness(0) invert(1)">';
 
       applyLogoToAll('upload', uploadedLogoDataUrl);
+      requestLogoAutosave();
     };
     reader.readAsDataURL(file);
   });
@@ -167,56 +176,109 @@ document.addEventListener('DOMContentLoaded', function () {
     var v = parseInt(sizeSlider.value);
     sizeValLabel.textContent = v + 'px';
     applyCoverLogoSize(v);
+    requestLogoAutosave();
   });
 
   // Position buttons
   var coverSlide1 = document.getElementById('slide1');
+
+  function applyCoverLogoPosition(pos) {
+    var logo = coverLogoEl;
+    if (!logo || !coverSlide1) return;
+
+    coverLogoPosition = pos || 'center';
+
+    document.querySelectorAll('.pos-btn').forEach(function (b) {
+      var isActive = b.dataset.pos === coverLogoPosition;
+      b.style.background = isActive ? 'var(--terra)' : 'rgba(255,255,255,0.08)';
+      b.style.color = isActive ? 'white' : 'rgba(255,255,255,0.7)';
+      b.classList.toggle('active', isActive);
+    });
+
+    // Reset position styles
+    logo.style.position = '';
+    logo.style.top = '';
+    logo.style.left = '';
+    logo.style.right = '';
+    logo.style.bottom = '';
+    logo.style.alignSelf = '';
+    logo.style.justifySelf = '';
+    logo.style.marginBottom = '';
+    coverSlide1.style.alignItems = '';
+
+    if (coverLogoPosition === 'center') {
+      logo.style.alignSelf = '';
+      logo.style.marginBottom = '28px';
+      coverSlide1.style.alignItems = 'center';
+    } else if (coverLogoPosition === 'top-left') {
+      logo.style.position = 'absolute';
+      logo.style.top = '24px';
+      logo.style.left = '28px';
+    } else if (coverLogoPosition === 'top-right') {
+      logo.style.position = 'absolute';
+      logo.style.top = '24px';
+      logo.style.right = '28px';
+    } else if (coverLogoPosition === 'bottom-left') {
+      logo.style.position = 'absolute';
+      logo.style.bottom = '28px';
+      logo.style.left = '28px';
+    }
+  }
+
   document.querySelectorAll('.pos-btn').forEach(function (btn) {
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
-      document.querySelectorAll('.pos-btn').forEach(function (b) {
-        b.style.background = 'rgba(255,255,255,0.08)';
-        b.style.color = 'rgba(255,255,255,0.7)';
-        b.classList.remove('active');
-      });
-      btn.style.background = 'var(--terra)';
-      btn.style.color = 'white';
-      btn.classList.add('active');
-
-      var pos = btn.dataset.pos;
-      var logo = coverLogoEl;
-      if (!logo) return;
-
-      // Reset position styles
-      logo.style.position = '';
-      logo.style.top = '';
-      logo.style.left = '';
-      logo.style.right = '';
-      logo.style.bottom = '';
-      logo.style.alignSelf = '';
-      logo.style.justifySelf = '';
-      logo.style.marginBottom = '';
-      coverSlide1.style.alignItems = '';
-
-      if (pos === 'center') {
-        logo.style.alignSelf = '';
-        logo.style.marginBottom = '28px';
-        coverSlide1.style.alignItems = 'center';
-      } else if (pos === 'top-left') {
-        logo.style.position = 'absolute';
-        logo.style.top = '24px';
-        logo.style.left = '28px';
-      } else if (pos === 'top-right') {
-        logo.style.position = 'absolute';
-        logo.style.top = '24px';
-        logo.style.right = '28px';
-      } else if (pos === 'bottom-left') {
-        logo.style.position = 'absolute';
-        logo.style.bottom = '28px';
-        logo.style.left = '28px';
-      }
+      applyCoverLogoPosition(btn.dataset.pos);
+      requestLogoAutosave();
     });
   });
+
+  window.getBrochureLogoState = function () {
+    return {
+      type: currentLogoType,
+      uploadedLogoDataUrl: uploadedLogoDataUrl,
+      coverSize: sizeSlider ? parseInt(sizeSlider.value, 10) : null,
+      coverPosition: coverLogoPosition,
+    };
+  };
+
+  window.applyBrochureLogoState = function (state) {
+    if (!state || typeof state !== 'object') return;
+
+    var type = state.type || 'grid';
+    if (type === 'grid') {
+      currentLogoType = 'grid';
+      applyLogoToAll('grid');
+    } else if (type === 'upload' && state.uploadedLogoDataUrl) {
+      currentLogoType = 'upload';
+      uploadedLogoDataUrl = state.uploadedLogoDataUrl;
+      applyLogoToAll('upload', uploadedLogoDataUrl);
+    } else if (type.indexOf('svg:') === 0) {
+      var key = type.slice(4);
+      if (LOGO_MARKS[key]) {
+        currentLogoType = type;
+        applyLogoToAll('svg', LOGO_MARKS[key]);
+      }
+    }
+
+    document.querySelectorAll('#logoPickRow .logo-pick-opt, #logoPickRow .logo-upload-btn').forEach(function (opt) {
+      opt.classList.remove('active');
+    });
+    var selector = type === 'grid' ? '[data-logo="grid"]' : '[data-logo="' + type.slice(4) + '"]';
+    var activeOption = type === 'upload' ? logoUploadBtn : document.querySelector('#logoPickRow .logo-pick-opt' + selector);
+    if (activeOption) activeOption.classList.add('active');
+
+    if (state.coverSize && sizeSlider) {
+      var size = parseInt(state.coverSize, 10);
+      sizeSlider.value = size;
+      sizeValLabel.textContent = size + 'px';
+      applyCoverLogoSize(size);
+    }
+
+    if (state.coverPosition) {
+      applyCoverLogoPosition(state.coverPosition);
+    }
+  };
 
   // Expose for other modules if needed
   window.LOGO_MARKS = LOGO_MARKS;

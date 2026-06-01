@@ -5,45 +5,54 @@
   'metropolitan': 'M', 'northern': 'N', 'overground': 'OV', 'piccadilly': 'P',
   'thameslink': 'TL', 'victoria': 'V', 'waterloo': 'W', 'national': 'NR', 'tram': 'TR'
 } %}
+{% set layout_id = layout_id | default('default') %}
 <div class="slide-label">SLIDE {{ slide_num }} &mdash; TRAVEL TIMES</div>
-<div class="slide-wrapper slide-travel" id="slide{{ slide_num }}">
+<div class="slide-wrapper slide-travel" id="slide{{ slide_num }}" data-slide-type="travel_map" data-layout-id="{{ layout_id }}">
   <div class="texture"></div>
 
-  <div class="header-bar">
-    <div class="logo-grid logo-zone" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
+  <div class="header-bar" data-slot-id="header">
+    <div class="logo-grid logo-zone" data-slot-id="header-logo" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
       {% for i in range(20) %}<span style="border-color:rgba(255,255,255,0.5)"></span>{% endfor %}
     </div>
-    <span class="bldg-name">{{ header_name }}</span>
+    <span class="bldg-name" data-slot-id="header-name">{{ header_name }}</span>
   </div>
 
-  <div class="left-panel">
-    <h2 contenteditable="true">{{ content.heading | default('Travel times') }}</h2>
+  <div class="left-panel" data-slot-id="travel-panel">
+    <h2 data-slot-id="heading" contenteditable="true">{{ content.heading | default('Travel times') }}</h2>
 
-    <div id="stationList">
+    <div id="stationList" data-slot-id="station-list">
       {% for station in content.stations | default([]) %}
-      <div class="travel-route" data-station>
+      <div class="travel-route" data-slot-id="station-{{ loop.index }}" data-station>
+        {% if not clean_mode | default(false) %}
         <button class="route-delete-btn" title="Remove station">&#10005;</button>
-        <div class="route-name" contenteditable="true">{{ station.name }}{% if station.time %} - {{ station.time }}{% endif %}</div>
-        <div class="transport-dots">
+        {% endif %}
+        <div class="route-name" data-slot-id="station-{{ loop.index }}-name" contenteditable="true">{{ station.name }}{% if station.time %} - {{ station.time }}{% endif %}</div>
+        <div class="transport-dots" data-slot-id="station-{{ loop.index }}-lines">
           {% for line_id in station.lines | default([]) %}
           <div class="t-dot {{ line_id }}" data-line="{{ line_id }}" title="{{ line_id | capitalize }}">{{ line_abbr.get(line_id, line_id[0]|upper) }}</div>
           {% endfor %}
+          {% if not clean_mode | default(false) %}
           <div class="add-line-btn" title="Add line">+</div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
     </div>
 
+    {% if not clean_mode | default(false) %}
     <button class="tube-add-btn" id="addStationBtn">+ Add station</button>
+    {% endif %}
 
     {% if content.note %}
-    <div class="note" contenteditable="true">{{ content.note }}</div>
+    <div class="note" data-slot-id="note" contenteditable="true">{{ content.note }}</div>
     {% endif %}
   </div>
 
-  <div class="map-area img-placeholder" style="position:relative;">
+  <div class="map-area img-placeholder" data-slot-id="map">
     <div class="ph-icon">&#128506;</div>
     <div class="ph-label">Area map &mdash; upload local map image</div>
+    {% if not clean_mode | default(false) %}
     <button class="map-generate-btn" id="generateMapBtn" title="Auto-generate neighbourhood map">&#127758; Generate Map</button>
+    {% endif %}
   </div>
 </div>

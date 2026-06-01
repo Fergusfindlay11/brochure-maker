@@ -2,8 +2,10 @@
 
 import os
 import httpx
+from dotenv import load_dotenv
+from pathlib import Path as _Path
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+load_dotenv(_Path(__file__).resolve().parent.parent / ".env", override=True)
 MODEL = "anthropic/claude-sonnet-4-6"
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -26,7 +28,8 @@ async def rewrite_text(text: str, action: str) -> str:
     Returns:
         The rewritten text string.
     """
-    if not OPENROUTER_API_KEY:
+    api_key = os.getenv("OPENROUTER_API_KEY", "")
+    if not api_key:
         raise ValueError("OPENROUTER_API_KEY not set in environment")
 
     system_prompt = PROMPTS.get(action, PROMPTS["rewrite"])
@@ -35,7 +38,7 @@ async def rewrite_text(text: str, action: str) -> str:
         response = await client.post(
             API_URL,
             headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={

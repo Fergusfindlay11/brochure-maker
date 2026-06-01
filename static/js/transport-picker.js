@@ -187,12 +187,16 @@ document.addEventListener('DOMContentLoaded', function () {
     return row;
   }
 
-  document.getElementById('addStationBtn').addEventListener('click', function () {
-    var list = document.getElementById('stationList');
-    var row = buildStationRow();
-    list.appendChild(row);
-    row.querySelector('.route-name').focus();
-  });
+  var addStationBtn = document.getElementById('addStationBtn');
+  var stationList = document.getElementById('stationList');
+
+  if (addStationBtn && stationList) {
+    addStationBtn.addEventListener('click', function () {
+      var row = buildStationRow();
+      stationList.appendChild(row);
+      row.querySelector('.route-name').focus();
+    });
+  }
 
   // Wire up existing delete buttons
   document.querySelectorAll('.route-delete-btn').forEach(function (btn) {

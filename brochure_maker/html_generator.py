@@ -1,11 +1,14 @@
 """Assemble interactive HTML brochure from AI analysis using Jinja2 templates."""
 
+import json
 import os
 import re
 from pathlib import Path
 from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
+
+from brochure_maker.layout_variants import layout_variants_metadata
 
 
 # Resolve template and static directories relative to this file
@@ -100,6 +103,7 @@ def generate_brochure_html(
         colour_scheme=colour_scheme,
         slides=slides,
         project_id=project_id or "",
+        layout_variants_json=_layout_variants_json(),
         # Inlined static assets
         css_content=css_content,
         svg_library_js=svg_library_js,
@@ -313,6 +317,11 @@ def _load_static(relative_path: str) -> str:
     if filepath.exists():
         return filepath.read_text(encoding="utf-8")
     return f"/* File not found: {relative_path} */"
+
+
+def _layout_variants_json() -> str:
+    """Serialize layout metadata safely for an inline JSON script."""
+    return json.dumps(layout_variants_metadata(), ensure_ascii=True).replace("</", "<\\/")
 
 
 def _darken(hex_colour: str, factor: float = 0.8) -> str:

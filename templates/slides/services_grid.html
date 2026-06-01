@@ -8,44 +8,45 @@
   'broom': '<svg viewBox="0 0 24 24" fill="none"><line x1="17" y1="3" x2="7" y2="13" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round"/><path d="M7 13 L4 21 L12 18 L7 13Z" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linejoin="round" fill="none"/><line x1="17" y1="3" x2="20" y2="6" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round"/></svg>'
 } %}
 
+{% set layout_id = layout_id | default('default') %}
 <div class="slide-label">SLIDE {{ slide_num }} &mdash; {{ content.heading | default('SERVICES') | upper }}</div>
-<div class="slide-wrapper slide-services" id="slide{{ slide_num }}">
+<div class="slide-wrapper slide-services" id="slide{{ slide_num }}" data-slide-type="services_grid" data-layout-id="{{ layout_id }}">
   <div class="texture"></div>
 
-  <div class="header-bar">
-    <div class="logo-grid logo-zone" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
+  <div class="header-bar" data-slot-id="header">
+    <div class="logo-grid logo-zone" data-slot-id="header-logo" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
       {% for i in range(20) %}<span style="border-color:rgba(255,255,255,0.5)"></span>{% endfor %}
     </div>
-    <span class="bldg-name">{{ header_name }}</span>
+    <span class="bldg-name" data-slot-id="header-name">{{ header_name }}</span>
   </div>
 
-  <div class="left-panel">
-    <h2 contenteditable="true">{{ content.heading | default('Fully Managed') }}</h2>
+  <div class="left-panel" data-slot-id="text-panel">
+    <h2 data-slot-id="heading" contenteditable="true">{{ content.heading | default('Fully Managed') }}</h2>
     <div class="divider-line"></div>
-    <p class="intro-text" contenteditable="true">{{ content.intro_text | default('') }}</p>
+    <p class="intro-text" data-slot-id="intro" contenteditable="true">{{ content.intro_text | default('') }}</p>
 
-    <div class="managed-grid">
+    <div class="managed-grid" data-slot-id="services">
       {% for service in content.services | default([]) %}
-      <div class="managed-item">
-        <div class="managed-icon" data-icon-id="{{ service.icon_hint | default('key') }}" title="Click to change icon">
+      <div class="managed-item" data-slot-id="service-{{ loop.index }}">
+        <div class="managed-icon" data-slot-id="service-{{ loop.index }}-icon" data-icon-id="{{ service.icon_hint | default('key') }}" title="Click to change icon">
           {{ svc_icons.get(service.icon_hint, svc_icons.key) }}
         </div>
-        <div class="managed-label" contenteditable="true">{{ service.label }}</div>
+        <div class="managed-label" data-slot-id="service-{{ loop.index }}-label" contenteditable="true">{{ service.label }}</div>
       </div>
       {% endfor %}
     </div>
     {% if content.note %}
-    <div class="note" contenteditable="true">{{ content.note }}</div>
+    <div class="note" data-slot-id="note" contenteditable="true">{{ content.note }}</div>
     {% endif %}
   </div>
 
-  <div class="right-panel">
+  <div class="right-panel" data-slot-id="image-panel">
     {% for img in content.images | default([{'description': 'Photo 1'}, {'description': 'Photo 2'}]) %}
-    <div class="img-placeholder" style="position:relative; width:100%; height:100%;">
+    <div class="service-image img-placeholder" data-slot-id="image-{{ loop.index }}">
       <div class="ph-icon">&#128247;</div>
       <div class="ph-label">{{ img.description | default('Photo') }}</div>
       {% if img.caption %}
-      <div class="caption" style="position:absolute; bottom:10px; left:12px; font-size:9px; color:rgba(255,255,255,0.7); letter-spacing:0.08em; background:rgba(0,0,0,0.3); padding:3px 8px; border-radius:2px; z-index:3;" contenteditable="true">{{ img.caption }}</div>
+      <div class="caption" data-slot-id="image-{{ loop.index }}-caption" contenteditable="true">{{ img.caption }}</div>
       {% endif %}
     </div>
     {% endfor %}
