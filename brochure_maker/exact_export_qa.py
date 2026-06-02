@@ -173,7 +173,7 @@ def _post_pdf(url: str, blockers: list[str]) -> bytes:
 
 def _html_export_summary(html: str, expected_pages: int) -> dict[str, Any]:
     return {
-        "pageCount": len(re.findall(r'class=["\'][^"\']*\bexact-page\b', html)),
+        "pageCount": _html_page_count(html),
         "expectedPageCount": expected_pages,
         "contenteditableCount": len(re.findall(r"\bcontenteditable\b", html, flags=re.IGNORECASE)),
         "fileInputCount": len(re.findall(r'<input\b[^>]*type=["\']file["\']', html, flags=re.IGNORECASE)),
@@ -182,6 +182,17 @@ def _html_export_summary(html: str, expected_pages: int) -> dict[str, Any]:
         "fieldsPanelCount": len(re.findall(r'\bexact-fields-panel\b', html)),
         "bodyClass": _body_class(html),
     }
+
+
+def _html_page_count(html: str) -> int:
+    page_ids = set(re.findall(r'\bid\s*=\s*["\']page(\d+)["\']', html, flags=re.IGNORECASE))
+    if page_ids:
+        return len(page_ids)
+    return sum(
+        1
+        for class_value in re.findall(r'\bclass\s*=\s*["\']([^"\']*)["\']', html, flags=re.IGNORECASE)
+        if "exact-page" in class_value.split()
+    )
 
 
 def _state_export_summary(html: str, state: dict[str, Any], staged: dict[str, Any]) -> dict[str, Any]:

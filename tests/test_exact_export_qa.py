@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from brochure_maker.exact_export_qa import REQUIRED_EXPORT_ASSERTIONS, write_export_qa
+from brochure_maker.exact_export_qa import REQUIRED_EXPORT_ASSERTIONS, _html_export_summary, write_export_qa
 
 
 class _FakeResponse:
@@ -24,6 +24,18 @@ class _FakeResponse:
 
 
 class TestExactExportQa(unittest.TestCase):
+    def test_export_page_count_ignores_exact_page_frame_classes(self):
+        html = """
+        <html><body class="export-clean">
+          <section class="exact-page-frame"><div class="exact-page" id="page1"></div></section>
+          <section class="exact-page-frame"><div class="exact-page" id="page2"></div></section>
+        </body></html>
+        """
+
+        summary = _html_export_summary(html, expected_pages=2)
+
+        self.assertEqual(summary["pageCount"], 2)
+
     def test_export_qa_checks_clean_html_and_pdf_parity(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_dir = Path(temp_dir)

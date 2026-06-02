@@ -1159,6 +1159,58 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         )
         self.assertEqual(facade_field["value"], "Victorian Façade")
 
+    def test_inventory_multiline_amenity_group_keeps_line_breaks_and_bounds(self):
+        pages = [
+            {
+                "page_num": 4,
+                "width": 600,
+                "height": 400,
+                "body": (
+                    '<p style="position:absolute;top:100px;left:40px;white-space:nowrap" '
+                    'class="pdf-text" contenteditable="true" data-save-id="a1" '
+                    'data-plain-text="Newly Refurbished to Contemporary Style with Exposed Services">'
+                    "Newly Refurbished to Contemporary Style with Exposed Services</p>"
+                    '<p style="position:absolute;top:100px;left:220px;white-space:nowrap" '
+                    'class="pdf-text" contenteditable="true" data-save-id="a2" '
+                    'data-plain-text="In-House Gym">In-House Gym</p>'
+                ),
+                "inventory_amenity_label_groups": [
+                    {
+                        "page_num": 4,
+                        "label": "Newly Refurbished to Contemporary Style with Exposed Services",
+                        "value": "Newly Refurbished to\nContemporary Style\nwith Exposed Services",
+                        "line_count": 3,
+                        "bbox": {"left": 40, "top": 100, "width": 120, "height": 48},
+                    }
+                ],
+                "text_entries": [
+                    {"page_num": 4, "save_id": "heading", "plain": "AMENITIES", "top": 40, "left": 40, "font_style": {"font_size_px": 34}},
+                    {
+                        "page_num": 4,
+                        "save_id": "a1",
+                        "plain": "Newly Refurbished to Contemporary Style with Exposed Services",
+                        "top": 100,
+                        "left": 40,
+                        "font_style": {"font_size_px": 13},
+                    },
+                    {"page_num": 4, "save_id": "a2", "plain": "In-House Gym", "top": 100, "left": 220, "font_style": {"font_size_px": 13}},
+                    {"page_num": 4, "save_id": "a3", "plain": "Showers", "top": 180, "left": 40, "font_style": {"font_size_px": 13}},
+                    {"page_num": 4, "save_id": "a4", "plain": "Bike Racks", "top": 180, "left": 220, "font_style": {"font_size_px": 13}},
+                ],
+            }
+        ]
+
+        config = _build_structured_field_config(pages)
+        multiline = next(field for field in config["amenities"] if field["targets"] == ["a1"])
+
+        self.assertEqual(multiline["kind"], "html-lines")
+        self.assertEqual(multiline["value"], "Newly Refurbished to\nContemporary Style\nwith Exposed Services")
+        exact_pdf_layout._apply_default_structured_field_layouts(pages, config)
+
+        self.assertIn("Newly Refurbished to<br/>Contemporary Style<br/>with Exposed Services", pages[0]["body"])
+        self.assertIn("width:128.00px", pages[0]["body"])
+        self.assertIn("white-space:normal", pages[0]["body"])
+
     def test_structured_field_config_infers_non_austin_amenities_and_contacts(self):
         config = _build_structured_field_config(
             [

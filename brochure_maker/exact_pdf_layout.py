@@ -4206,6 +4206,7 @@ def _build_structured_field_config(
                 else {},
             }
         )
+    _enrich_amenity_fields_with_inventory(amenities, pages)
 
     contacts = _build_contact_fields(entries)
     agency_logos = _build_agency_logo_defs(contacts, entries, pages)
@@ -4254,6 +4255,41 @@ def _field_config_image_region(region: dict[str, Any], page: dict[str, Any]) -> 
         "page": str(page.get("page_num")),
         **bbox,
     }
+
+
+def _enrich_amenity_fields_with_inventory(amenities: list[dict[str, Any]], pages: list[dict[str, Any]]) -> None:
+    groups: list[dict[str, Any]] = []
+    for page in pages:
+        for group in page.get("inventory_amenity_label_groups") or []:
+            if isinstance(group, dict):
+                groups.append(group)
+    if not groups:
+        return
+    groups_by_value = {
+        _compact_text(str(group.get("label") or group.get("value") or "")): group
+        for group in groups
+        if _compact_text(str(group.get("label") or group.get("value") or ""))
+    }
+    for amenity in amenities:
+        key = _compact_text(str(amenity.get("value") or ""))
+        group = groups_by_value.get(key)
+        if not group:
+            continue
+        value = str(group.get("value") or amenity.get("value") or "")
+        if value:
+            amenity["value"] = value
+        if int(group.get("line_count") or 0) > 1 or "\n" in value:
+            amenity["kind"] = "html-lines"
+        bbox = group.get("bbox") if isinstance(group.get("bbox"), dict) else {}
+        if bbox:
+            amenity["bbox"] = bbox
+            anchor = amenity.get("anchor") if isinstance(amenity.get("anchor"), dict) else {}
+            if not anchor:
+                anchor = {}
+                amenity["anchor"] = anchor
+            anchor.setdefault("page_num", group.get("page_num"))
+            anchor.setdefault("left", bbox.get("left"))
+            anchor.setdefault("top", bbox.get("top"))
 
 
 def _field_config_image_regions_from_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -4747,6 +4783,7 @@ def _merge_inventory_map_regions(pages: list[dict[str, Any]], inventory: dict[st
         }
         page["inventory_page_purpose"] = purpose
         page["inventory_detected_features"] = sorted(detected)
+        page["inventory_amenity_label_groups"] = _inventory_amenity_label_groups(inventory_page, page)
         map_expected = purpose in {"connectivitymap", "locationmap"} or (
             "map" in detected and "contactsandterms" not in purpose and "cover" not in purpose
         )
@@ -4794,6 +4831,53 @@ def _merge_inventory_map_regions(pages: list[dict[str, Any]], inventory: dict[st
                 continue
             existing.append(item)
         page["image_regions"] = existing
+
+
+def _inventory_amenity_label_groups(inventory_page: dict[str, Any], render_page: dict[str, Any]) -> list[dict[str, Any]]:
+    regions = inventory_page.get("amenity_icon_regions") if isinstance(inventory_page.get("amenity_icon_regions"), list) else []
+    if not regions:
+        return []
+    blocks = {
+        str(block.get("id") or ""): block
+        for block in (inventory_page.get("editable_text_blocks") or [])
+        if isinstance(block, dict) and block.get("id")
+    }
+    model_size = inventory_page.get("size") if isinstance(inventory_page.get("size"), dict) else {}
+    scale_x = float(render_page.get("width") or model_size.get("width") or 1) / float(model_size.get("width") or render_page.get("width") or 1)
+    scale_y = float(render_page.get("height") or model_size.get("height") or 1) / float(model_size.get("height") or render_page.get("height") or 1)
+    groups: list[dict[str, Any]] = []
+    for region in regions:
+        if not isinstance(region, dict):
+            continue
+        span_ids = [str(item) for item in (region.get("label_span_ids") or []) if item]
+        span_blocks = [blocks[span_id] for span_id in span_ids if span_id in blocks]
+        if span_blocks:
+            span_blocks.sort(key=lambda block: (float((block.get("bbox") or {}).get("y") or 0), float((block.get("bbox") or {}).get("x") or 0)))
+            lines = [str(block.get("text") or "").strip() for block in span_blocks if str(block.get("text") or "").strip()]
+        else:
+            lines = [str(region.get("label") or "").strip()]
+        lines = [line for line in lines if line]
+        if not lines:
+            continue
+        bbox = region.get("bbox") if isinstance(region.get("bbox"), dict) else {}
+        x = bbox.get("x") if bbox.get("x") is not None else bbox.get("left")
+        y = bbox.get("y") if bbox.get("y") is not None else bbox.get("top")
+        groups.append(
+            {
+                "page_num": int(inventory_page.get("page_number") or render_page.get("page_num") or 0),
+                "label": " ".join(lines),
+                "value": "\n".join(lines),
+                "line_count": len(lines),
+                "bbox": {
+                    "left": round(float(x or 0) * scale_x, 2),
+                    "top": round(float(y or 0) * scale_y, 2),
+                    "width": round(float(bbox.get("width") or 0) * scale_x, 2),
+                    "height": round(float(bbox.get("height") or 0) * scale_y, 2),
+                },
+                "source": "extraction-inventory amenity_icon_regions",
+            }
+        )
+    return groups
 
 
 def _refresh_source_preserved_edit_after_region_merges(pages: list[dict[str, Any]]) -> None:
@@ -5028,17 +5112,84 @@ def _apply_default_structured_field_layouts(pages: list[dict[str, Any]], field_c
     cover_title = field_config.get("cover_title") if isinstance(field_config.get("cover_title"), dict) else {}
     groups = cover_title.get("groups") if isinstance(cover_title.get("groups"), list) else []
     contacts = field_config.get("contacts") if isinstance(field_config.get("contacts"), list) else []
+    amenities = field_config.get("amenities") if isinstance(field_config.get("amenities"), list) else []
     for page in pages:
+        body = str(page.get("body") or "")
         if int(page.get("page_num") or 0) != 1:
             if contacts:
-                page["body"] = _apply_contact_groups_to_body(str(page.get("body") or ""), page, contacts)
+                body = _apply_contact_groups_to_body(body, page, contacts)
+            if amenities:
+                body = _apply_amenity_groups_to_body(body, page, amenities)
+            page["body"] = body
             continue
-        body = str(page.get("body") or "")
         if groups:
             body = _apply_cover_title_groups_to_body(body, groups)
         if contacts:
             body = _apply_contact_groups_to_body(body, page, contacts)
+        if amenities:
+            body = _apply_amenity_groups_to_body(body, page, amenities)
         page["body"] = body
+
+
+def _apply_amenity_groups_to_body(body: str, page: dict[str, Any], amenities: list[dict[str, Any]]) -> str:
+    page_num = int(page.get("page_num") or 0)
+    for amenity in amenities:
+        anchor = amenity.get("anchor") if isinstance(amenity.get("anchor"), dict) else {}
+        if int(anchor.get("page_num") or 0) != page_num:
+            continue
+        targets = [str(target) for target in amenity.get("targets", []) if target]
+        if not targets:
+            continue
+        value = str(amenity.get("value") or "")
+        if not value:
+            continue
+        bbox = amenity.get("bbox") if isinstance(amenity.get("bbox"), dict) else {}
+        lines = [line for line in value.splitlines() if line.strip()] or [value]
+        html_value = _html_from_plain_text(value)
+        style_updates = {
+            "white-space": "normal",
+            "z-index": "7",
+        }
+        if bbox:
+            line_count = max(1, len(lines))
+            line_height = max(13.0, _number(bbox.get("height")) / line_count)
+            style_updates.update(
+                {
+                    "left": _px(bbox.get("left", anchor.get("left"))),
+                    "top": _px(bbox.get("top", anchor.get("top"))),
+                    "width": _px(max(72.0, _number(bbox.get("width")) + 8.0)),
+                    "min-height": _px(max(line_height, _number(bbox.get("height")) + 4.0)),
+                    "line-height": _px(line_height),
+                }
+            )
+        body = _replace_text_element_by_save_id(
+            body,
+            targets[0],
+            html_value,
+            style_updates=style_updates,
+            attr_updates={
+                "data-structured-field": "true",
+                "data-amenity-label": "true",
+                "data-field-kind": str(amenity.get("kind") or "plain"),
+                "data-plain-text": value,
+                "data-original-html": html_value,
+            },
+        )
+        for hidden_id in list(amenity.get("hide_targets") or []):
+            body = _replace_text_element_by_save_id(
+                body,
+                str(hidden_id),
+                "",
+                class_additions=["exact-field-hidden"],
+                attr_updates={
+                    "contenteditable": "false",
+                    "aria-hidden": "true",
+                    "data-structured-field": "true",
+                    "data-plain-text": "",
+                    "data-original-html": "",
+                },
+            )
+    return body
 
 
 def _apply_contact_groups_to_body(body: str, page: dict[str, Any], contacts: list[dict[str, Any]]) -> str:
