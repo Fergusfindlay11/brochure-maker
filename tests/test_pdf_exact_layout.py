@@ -535,6 +535,40 @@ class TestPdfExactLayout(unittest.TestCase):
         self.assertIn("space-plan replacement and metadata text", inventory["editable_elements"])
         self.assertNotIn("photo/image slots", inventory["editable_elements"])
 
+    def test_contact_terms_schedule_does_not_create_space_plan_inventory(self):
+        text_spans = [
+            {"id": "heading", "text": "FURTHER INFORMATION", "bbox": {"x": 36.0, "y": 42.0, "width": 160.0, "height": 18.0}},
+            {"id": "floor", "text": "FLOOR", "bbox": {"x": 520.0, "y": 130.0, "width": 48.0, "height": 14.0}},
+            {"id": "area", "text": "SQ FT", "bbox": {"x": 590.0, "y": 130.0, "width": 48.0, "height": 14.0}},
+            {"id": "status", "text": "STATUS", "bbox": {"x": 660.0, "y": 130.0, "width": 58.0, "height": 14.0}},
+            {"id": "row", "text": "4th Floor 1,985 Sq Ft Available", "bbox": {"x": 520.0, "y": 170.0, "width": 180.0, "height": 14.0}},
+            {"id": "agent", "text": "tom.boggis@bbgreal.com", "bbox": {"x": 36.0, "y": 390.0, "width": 160.0, "height": 14.0}},
+            {"id": "terms", "text": "MISREPRESENTATION ACT", "bbox": {"x": 36.0, "y": 735.0, "width": 190.0, "height": 14.0}},
+        ]
+        page = {
+            "page_number": 8,
+            "size": {"width": 842.0, "height": 595.0, "unit": "pt"},
+            "text_spans": text_spans,
+            "image_boxes": [],
+            "image_regions": [
+                {
+                    "id": "space-plan-p8-detected-1",
+                    "role": "space-plan",
+                    "bbox": {"left": 520.0, "top": 120.0, "width": 230.0, "height": 430.0},
+                    "confidence": 0.9,
+                }
+            ],
+            "semantic_regions": [{"kind": "contacts"}, {"kind": "agency_logos"}],
+        }
+
+        inventory = pdf_exact_layout._inventory_page(page, 7, 8)
+
+        self.assertEqual(inventory["page_purpose"], "contacts and terms")
+        self.assertEqual(inventory["space_plan_regions"], [])
+        self.assertNotIn("space_plan", inventory["detected_features"])
+        self.assertNotIn("floor_metadata", inventory["detected_features"])
+        self.assertNotIn("space-plan", {region.get("role") for region in inventory["image_regions"]})
+
     def test_footer_address_labels_do_not_supply_map_distribution(self):
         text_spans = [
             {"id": "s", "text": "Central Station", "bbox": {"x": 180.0, "y": 120.0, "width": 100.0, "height": 14.0}},

@@ -603,12 +603,19 @@ def _slot_bbox(slot: dict[str, Any]) -> dict[str, float]:
 
 def _page_context(page_number: int, text_entries: list[dict[str, Any]], semantic_regions: list[dict[str, Any]]) -> dict[str, Any]:
     text = _compact_text(" ".join(str(entry.get("plain") or entry.get("text") or "") for entry in text_entries))
-    region_kinds = {str(region.get("kind") or region.get("role") or "") for region in semantic_regions}
+    region_kinds = {_compact_text(str(region.get("kind") or region.get("role") or "")) for region in semantic_regions}
+    is_contact_page = (
+        any(token in text for token in ("furtherinformation", "viewings", "lettingagents", "misrepresentation"))
+        or any(kind in region_kinds for kind in ("contacts", "agencylogos", "agentcontacts", "agentcontact"))
+    )
+    has_plan_semantics = any(kind in region_kinds for kind in ("spaceplan", "floorplan", "floorplans"))
+    has_explicit_plan_text = _context_text_has_explicit_space_plan(text)
+    has_space_plan_text = _context_text_has_space_plan(text_entries)
     return {
         "page_number": page_number,
-        "has_space_plan": _context_text_has_space_plan(text_entries),
+        "has_space_plan": has_plan_semantics or (has_space_plan_text and not (is_contact_page and not has_explicit_plan_text)),
         "has_map": "map" in region_kinds or sum(token in text for token in ("station", "walktime", "transport", "bankstation", "underground")) >= 2,
-        "is_contact_page": any(token in text for token in ("furtherinformation", "viewings", "lettingagents", "misrepresentation")),
+        "is_contact_page": is_contact_page,
         "text_entries": text_entries,
     }
 
@@ -651,6 +658,10 @@ def _slot_text_overlap_metrics(bbox: dict[str, float], text_entries: list[dict[s
 def _context_text_has_space_plan(text_entries: list[dict[str, Any]]) -> bool:
     text = _compact_text(" ".join(str(entry.get("plain") or entry.get("text") or "") for entry in text_entries))
     return "floor" in text and any(token in text for token in ("sqft", "sqm", "workstations", "desks", "floorplans", "spaceplan"))
+
+
+def _context_text_has_explicit_space_plan(compact_text: str) -> bool:
+    return any(token in compact_text for token in ("floorplan", "floorplans", "spaceplan", "spaceplans"))
 
 
 def _compact_text(value: str) -> str:

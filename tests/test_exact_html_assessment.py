@@ -383,6 +383,45 @@ class TestExactHtmlAssessment(unittest.TestCase):
             }
             self.assertNotIn("Agency logo needs visual source fidelity, not just a text fallback", issues)
 
+    def test_contact_page_raw_agency_logo_evidence_does_not_mask_editor_default_asset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            project_dir, visual_path = self._write_project_fixture(base)
+            visual = json.loads(visual_path.read_text(encoding="utf-8"))
+            visual["score"] = 97.0
+            visual["accepted"] = True
+            visual["pages"][0]["score"] = 97.0
+            clean_generated = base / "generated-clean.png"
+            Image.new("RGB", (120, 80), "#ffffff").save(clean_generated)
+            visual["pages"][0]["generated"] = str(clean_generated)
+            visual_path.write_text(json.dumps(visual), encoding="utf-8")
+            graph = json.loads((project_dir / "brochure.design.json").read_text(encoding="utf-8"))
+            graph["pages"][0]["purpose"] = "contacts and terms"
+            graph["pages"][0]["elements"] = [
+                {
+                    "id": "p005-image-0001",
+                    "role": "agency-logo",
+                    "type": "agency-logo",
+                    "node_class": "extracted-evidence",
+                    "bbox": {"x": 0.1, "y": 0.1, "width": 0.12, "height": 0.12},
+                    "metadata": {},
+                },
+                {
+                    "id": "agency-logo-agency1",
+                    "role": "agency-logo",
+                    "type": "agency-logo",
+                    "node_class": "editor-control",
+                    "bbox": {"x": 0.1, "y": 0.5, "width": 0.2, "height": 0.1},
+                    "metadata": {"default_asset_url": "/api/projects/demo/exact_assets/images/agency-logo.png"},
+                },
+            ]
+            (project_dir / "brochure.design.json").write_text(json.dumps(graph), encoding="utf-8")
+
+            report = build_html_assessment(project_dir, visual_report_path=visual_path)
+
+            issues = {finding.get("issue") for finding in report["pages"][0]["findings"]}
+            self.assertNotIn("Agency logo needs visual source fidelity, not just a text fallback", issues)
+
     def test_contact_page_agency_logo_without_default_asset_is_flagged(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)

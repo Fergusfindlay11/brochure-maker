@@ -1396,6 +1396,44 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         self.assertEqual(config["map_regions"][0]["left"], 485)
         self.assertEqual(config["map_regions"][0]["mode"], "source-pdf")
 
+    def test_pdf_image_map_region_is_rendered_as_map_slot(self):
+        page = {
+            "page_num": 4,
+            "width": 842,
+            "height": 595,
+            "inventory_page_purpose": "locationintroduction",
+            "inventory_map_expected": False,
+            "text_entries": [
+                {"page_num": 4, "save_id": "p4-location", "plain": "Location", "top": 42, "left": 36},
+                {"page_num": 4, "save_id": "p4-metropolitan", "plain": "Metropolitan", "top": 238, "left": 520},
+                {"page_num": 4, "save_id": "p4-chancery", "plain": "Chancery Lane - Central", "top": 270, "left": 570},
+                {"page_num": 4, "save_id": "p4-address", "plain": "44 - 46 Sekforde Street", "top": 318, "left": 610},
+            ],
+            "image_regions": [
+                {
+                    "id": "p004-image-0001",
+                    "role": "map",
+                    "type": "map",
+                    "bbox": {"left": 277.69, "top": 84.34, "width": 610.07, "height": 393.39},
+                    "confidence": 0.72,
+                    "editable": True,
+                    "replaceable": True,
+                    "source_evidence": {
+                        "source": "PyMuPDF image xref placement",
+                        "reason": "map page context with low-saturation embedded region",
+                        "context": {"has_map": True, "has_space_plan": False, "is_contact_page": False},
+                    },
+                }
+            ],
+            "image_slots": [],
+        }
+
+        config = _build_structured_field_config([page])
+
+        self.assertEqual([region["page"] for region in config["map_regions"]], ["4"])
+        self.assertEqual(config["map_regions"][0]["save_id"], "exact-page4-map")
+        self.assertEqual(config["map_regions"][0]["mode"], "source-pdf")
+
     def test_inventory_map_bbox_is_trimmed_before_adjacent_table_sections(self):
         pages = [
             {

@@ -347,7 +347,11 @@ def _page_specific_findings(page_number: int, graph_page: dict[str, Any], page_s
                 }
             )
     if str(graph_page.get("purpose") or "").lower().startswith("contacts"):
-        agency_logos = [element for element in elements if element.get("role") == "agency-logo"]
+        agency_logos = [
+            element
+            for element in elements
+            if element.get("role") == "agency-logo" and element.get("node_class") != "extracted-evidence"
+        ]
         logos_missing_default_asset = [
             element
             for element in agency_logos

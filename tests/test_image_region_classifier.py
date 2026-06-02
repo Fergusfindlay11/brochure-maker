@@ -84,6 +84,37 @@ class TestImageRegionClassifier(unittest.TestCase):
             )
             self.assertIn("space-plan", {region["role"] for region in result["image_regions"]})
 
+    def test_contact_schedule_linework_does_not_become_space_plan_region(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            background = Path(temp_dir) / "contact-schedule-page.png"
+            image = Image.new("RGB", (1000, 700), "#eef3f2")
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((700, 95, 980, 610), outline="#7b817e", width=3)
+            for y in range(130, 590, 34):
+                draw.line((710, y, 970, y), fill="#8a8d89", width=2)
+            for x in range(740, 960, 55):
+                draw.line((x, 105, x, 605), fill="#8a8d89", width=2)
+            image.save(background)
+
+            result = classify_page_image_regions(
+                page_number=8,
+                width=1000,
+                height=700,
+                text_entries=[
+                    {"plain": "FURTHER INFORMATION", "top": 60, "left": 50},
+                    {"plain": "FLOOR", "top": 130, "left": 720},
+                    {"plain": "SQ FT", "top": 130, "left": 790},
+                    {"plain": "STATUS", "top": 130, "left": 870},
+                    {"plain": "4th Floor 1,985 Sq Ft Available", "top": 170, "left": 720},
+                    {"plain": "MISREPRESENTATION ACT", "top": 620, "left": 50},
+                ],
+                image_slots=[],
+                background_path=background,
+                semantic_regions=[{"kind": "contacts"}, {"kind": "agency_logos"}],
+            )
+
+            self.assertNotIn("space-plan", {region["role"] for region in result["image_regions"]})
+
     def test_map_context_region_does_not_become_photo_slot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)

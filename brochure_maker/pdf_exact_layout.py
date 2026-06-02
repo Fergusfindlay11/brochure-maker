@@ -195,8 +195,15 @@ def _inventory_page(page: dict[str, Any], page_index: int, page_count: int) -> d
     semantic_regions = page.get("semantic_regions") if isinstance(page.get("semantic_regions"), list) else []
     page_text = " ".join(str(span.get("text") or "") for span in text_spans)
     compact = _compact_semantic_text(page_text)
-    space_plan_regions = _space_plan_inventory(page_number, compact, image_boxes)
-    space_plan_regions.extend(_space_plan_inventory_from_image_regions(page_number, image_regions))
+    text_space_plan_regions = _space_plan_inventory(page_number, compact, image_boxes)
+    image_space_plan_regions = _space_plan_inventory_from_image_regions(page_number, image_regions)
+    purpose = _infer_page_purpose(compact, page_number, page_count, text_spans, image_boxes, semantic_regions)
+    if _suppresses_contact_page_space_plan(purpose, compact, semantic_regions):
+        text_space_plan_regions = []
+        image_space_plan_regions = []
+        image_regions = [region for region in image_regions if not (isinstance(region, dict) and region.get("role") == "space-plan")]
+        purpose = _remove_purpose_features(purpose, {"space_plan", "floor_metadata"})
+    space_plan_regions = text_space_plan_regions + image_space_plan_regions
     space_plan_candidate_ids = {
         str(candidate)
         for region in space_plan_regions
@@ -209,7 +216,6 @@ def _inventory_page(page: dict[str, Any], page_index: int, page_count: int) -> d
         if str(image.get("id") or "") not in space_plan_candidate_ids
         and _image_box_region_role(image, image_regions) in {"", "photo-region", "photo-grid", "hero-photo"}
     ]
-    purpose = _infer_page_purpose(compact, page_number, page_count, text_spans, image_boxes, semantic_regions)
     purpose = _normalise_photo_region_feature(purpose, has_photo_regions=bool(photo_image_boxes))
     cover_title_glyph_ids = _cover_vertical_title_glyph_ids(page_number, text_spans)
     typography = [
@@ -347,6 +353,23 @@ def _infer_page_purpose(
     if not features:
         features.add("editable_text")
     return {"purpose": purpose, "layout_type": layout_type, "confidence": round(confidence, 2), "features": sorted(features)}
+
+
+def _suppresses_contact_page_space_plan(purpose: dict[str, Any], compact: str, semantic_regions: list[dict[str, Any]]) -> bool:
+    if purpose.get("purpose") != "contacts and terms":
+        return False
+    if any(token in compact for token in ("floorplan", "floorplans", "spaceplan", "spaceplans")):
+        return False
+    features = {str(feature) for feature in purpose.get("features") or []}
+    region_kinds = {_compact_semantic_text(str(region.get("kind") or region.get("role") or "")) for region in semantic_regions}
+    contact_or_terms = "legal_copy" in features or any(kind in region_kinds for kind in ("contacts", "agencylogos", "agentcontacts"))
+    return contact_or_terms
+
+
+def _remove_purpose_features(purpose: dict[str, Any], features_to_remove: set[str]) -> dict[str, Any]:
+    updated = dict(purpose)
+    updated["features"] = sorted(feature for feature in purpose.get("features") or [] if str(feature) not in features_to_remove)
+    return updated
 
 
 def _normalise_photo_region_feature(purpose: dict[str, Any], *, has_photo_regions: bool) -> dict[str, Any]:

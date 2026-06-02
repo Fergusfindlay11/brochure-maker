@@ -8067,7 +8067,11 @@ def _map_regions_from_image_regions(pages: list[dict[str, Any]]) -> list[dict[st
         for region in page.get("image_regions") or []:
             if not isinstance(region, dict) or str(region.get("role") or region.get("type") or "") != "map":
                 continue
-            if page.get("inventory_page_purpose") is not None and not page.get("inventory_map_expected"):
+            source_evidence = region.get("source_evidence") if isinstance(region.get("source_evidence"), dict) else {}
+            source = str(source_evidence.get("source") or "")
+            source_is_pdf_image_map = source.startswith("PyMuPDF image")
+            source_is_confident_pdf_map = _image_region_is_confident_pdf_map(source_evidence)
+            if page.get("inventory_page_purpose") is not None and not page.get("inventory_map_expected") and not source_is_confident_pdf_map:
                 continue
             bbox = _bbox_from_semantic_region(region)
             bbox = _scale_fractional_region_to_page(bbox, page)
@@ -8075,21 +8079,19 @@ def _map_regions_from_image_regions(pages: list[dict[str, Any]]) -> list[dict[st
             height = float(bbox.get("height") or 0)
             if width <= 0 or height <= 0:
                 continue
-            source_evidence = region.get("source_evidence") if isinstance(region.get("source_evidence"), dict) else {}
-            source = str(source_evidence.get("source") or "")
             source_is_rendered_asset = source.startswith("/api/projects/")
             source_is_inventory_map = source == "extraction-inventory map_regions" and bool(
                 page.get("inventory_map_expected")
             )
-            if not source_is_rendered_asset and not source_is_inventory_map:
+            if not source_is_rendered_asset and not source_is_inventory_map and not source_is_pdf_image_map:
                 continue
             if _map_region_has_non_map_text_panel_overlap(region):
                 continue
-            if _map_image_region_false_positive(bbox, page) and not (
+            if _map_image_region_false_positive(bbox, page, source_evidence=source_evidence) and not (
                 source_is_inventory_map and str(page.get("inventory_page_purpose") or "") == "connectivitymap"
             ):
                 continue
-            preferred = 2 if source_is_rendered_asset else 1
+            preferred = 2 if (source_is_rendered_asset or source_is_pdf_image_map) else 1
             candidates.append((preferred, width * height, page_num, page, bbox))
     if not candidates:
         return []
@@ -8117,6 +8119,16 @@ def _map_regions_from_image_regions(pages: list[dict[str, Any]]) -> list[dict[st
     return regions
 
 
+def _image_region_is_confident_pdf_map(source_evidence: dict[str, Any]) -> bool:
+    evidence_context = source_evidence.get("context") if isinstance(source_evidence.get("context"), dict) else {}
+    return (
+        str(source_evidence.get("source") or "").startswith("PyMuPDF image")
+        and bool(evidence_context.get("has_map"))
+        and not bool(evidence_context.get("is_contact_page"))
+        and "map" in _compact_text(str(source_evidence.get("reason") or ""))
+    )
+
+
 def _map_region_has_non_map_text_panel_overlap(region: dict[str, Any]) -> bool:
     evidence = region.get("source_evidence") if isinstance(region.get("source_evidence"), dict) else {}
     overlap = evidence.get("text_overlap") if isinstance(evidence.get("text_overlap"), dict) else {}
@@ -8142,7 +8154,12 @@ def _map_region_has_non_map_text_panel_overlap(region: dict[str, Any]) -> bool:
     return len(long_samples) >= 2
 
 
-def _map_image_region_false_positive(bbox: dict[str, float], page: dict[str, Any]) -> bool:
+def _map_image_region_false_positive(
+    bbox: dict[str, float],
+    page: dict[str, Any],
+    *,
+    source_evidence: dict[str, Any] | None = None,
+) -> bool:
     page_width = float(page.get("width") or 1)
     page_height = float(page.get("height") or 1)
     width = float(bbox.get("width") or 0)
@@ -8150,14 +8167,17 @@ def _map_image_region_false_positive(bbox: dict[str, float], page: dict[str, Any
     area_ratio = (width * height) / max(1.0, page_width * page_height)
     labels = _map_label_entries_for_region(_map_label_entries(page.get("text_entries", [])), page)
     quality = _map_label_region_quality(labels)
+    compact = _compact_text(" ".join(str(entry.get("plain") or "") for entry in page.get("text_entries", [])))
+    tableish = any(token in compact for token in ("investmentsummary", "proposal", "schedule", "statusnotes", "comparableschemes"))
+    confident_pdf_map = _image_region_is_confident_pdf_map(source_evidence or {})
     if area_ratio >= 0.22 and (len(labels) < 8 or quality < 10):
+        if confident_pdf_map and not tableish:
+            return False
         return True
     if area_ratio < 0.58:
         return False
     if len(labels) >= 5:
         return quality < 14
-    compact = _compact_text(" ".join(str(entry.get("plain") or "") for entry in page.get("text_entries", [])))
-    tableish = any(token in compact for token in ("investmentsummary", "proposal", "schedule", "statusnotes", "comparableschemes"))
     if tableish or area_ratio >= 0.72:
         return True
     return False
