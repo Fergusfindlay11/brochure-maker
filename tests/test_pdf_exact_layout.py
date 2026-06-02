@@ -569,6 +569,132 @@ class TestPdfExactLayout(unittest.TestCase):
         self.assertNotIn("floor_metadata", inventory["detected_features"])
         self.assertNotIn("space-plan", {region.get("role") for region in inventory["image_regions"]})
 
+    def test_text_only_final_legal_contacts_do_not_require_agency_logo(self):
+        text_spans = [
+            {
+                "id": "body1",
+                "text": "Please make sure that the street number and building name are clearly displayed.",
+                "bbox": {"x": 103.0, "y": 130.0, "width": 460.0, "height": 12.0},
+                "font": {"family": "ArialMT", "size": 10.98},
+            },
+            {
+                "id": "body2",
+                "text": "The development will result in changes to road access points and pavement levels.",
+                "bbox": {"x": 103.0, "y": 220.0, "width": 460.0, "height": 12.0},
+                "font": {"family": "ArialMT", "size": 10.98},
+            },
+            {
+                "id": "contact1",
+                "text": "For more advice, please email AskHighways@westminster.gov.uk.",
+                "bbox": {"x": 103.0, "y": 320.0, "width": 430.0, "height": 12.0},
+                "font": {"family": "ArialMT", "size": 10.98},
+            },
+            {
+                "id": "contact2",
+                "text": "Please email wasteplanning@westminster.gov.uk for advice.",
+                "bbox": {"x": 103.0, "y": 356.0, "width": 430.0, "height": 12.0},
+                "font": {"family": "ArialMT", "size": 10.98},
+            },
+            {
+                "id": "terms",
+                "text": "Please note: the full text for informatives can be found in the Council's policies.",
+                "bbox": {"x": 93.0, "y": 633.0, "width": 440.0, "height": 12.0},
+                "font": {"family": "ArialMT", "size": 10.98},
+            },
+        ]
+        page = {
+            "page_number": 43,
+            "size": {"width": 612.0, "height": 792.0, "unit": "pt"},
+            "text_spans": text_spans,
+            "image_boxes": [],
+            "image_regions": [],
+            "semantic_regions": [
+                {"kind": "contacts", "span_ids": ["contact1", "contact2"]},
+                {"kind": "agency_logos", "span_ids": ["body1", "body2"]},
+            ],
+        }
+
+        inventory = pdf_exact_layout._inventory_page(page, 42, 43)
+
+        self.assertEqual(inventory["page_purpose"], "contacts and terms")
+        self.assertIn("agent_contacts", inventory["detected_features"])
+        self.assertIn("legal_copy", inventory["detected_features"])
+        self.assertNotIn("agency_logos", inventory["detected_features"])
+        self.assertNotIn("agency logo replacement", inventory["editable_elements"])
+
+    def test_short_prominent_name_above_contact_is_agency_logo_evidence(self):
+        text_spans = [
+            {
+                "id": "logo",
+                "text": "WESTMINSTER",
+                "bbox": {"x": 100.0, "y": 110.0, "width": 150.0, "height": 24.0},
+                "font": {"family": "Arial-BoldMT", "size": 18.0, "is_bold": True},
+            },
+            {
+                "id": "contact",
+                "text": "planning@example.com",
+                "bbox": {"x": 100.0, "y": 210.0, "width": 180.0, "height": 12.0},
+                "font": {"family": "ArialMT", "size": 10.98},
+            },
+        ]
+        semantic_regions = pdf_exact_layout._infer_semantic_regions(text_spans, 4, 612.0, 792.0)
+        page = {
+            "page_number": 4,
+            "size": {"width": 612.0, "height": 792.0, "unit": "pt"},
+            "text_spans": text_spans,
+            "image_boxes": [],
+            "image_regions": [],
+            "semantic_regions": semantic_regions,
+        }
+
+        inventory = pdf_exact_layout._inventory_page(page, 3, 8)
+
+        self.assertIn("agency_logos", {region["kind"] for region in semantic_regions})
+        self.assertIn("agency_logos", inventory["detected_features"])
+
+    def test_plan_number_decision_letter_does_not_create_space_plan_inventory(self):
+        text_spans = [
+            {"id": "heading", "text": "DRAFT DECISION LETTER", "bbox": {"x": 240.0, "y": 84.0, "width": 160.0, "height": 16.0}},
+            {"id": "label", "text": "Plan Nos:", "bbox": {"x": 77.0, "y": 238.0, "width": 70.0, "height": 14.0}},
+            {
+                "id": "row1",
+                "text": "SECOND FLOOR PLAN; 4468-DLG-ZZ-03-DR-A-EX_1004 A-EXISTING THIRD",
+                "bbox": {"x": 160.0, "y": 296.0, "width": 394.0, "height": 12.0},
+            },
+            {
+                "id": "row2",
+                "text": "PLAN; 4468-DLG-ZZ-05-DR-A-EX_1006 B-EXISTING ROOF PLAN; 4468-DLG-ZZ-",
+                "bbox": {"x": 160.0, "y": 322.0, "width": 408.0, "height": 12.0},
+            },
+            {
+                "id": "row3",
+                "text": "4468-DLG-ZZ-00-DR-A-PL_1100 D-PROPOSED LOWER GROUND FLOOR PLAN;",
+                "bbox": {"x": 160.0, "y": 406.0, "width": 402.0, "height": 12.0},
+            },
+        ]
+        page = {
+            "page_number": 32,
+            "size": {"width": 612.0, "height": 792.0, "unit": "pt"},
+            "text_spans": text_spans,
+            "image_boxes": [],
+            "image_regions": [
+                {
+                    "id": "space-plan-p32-detected-1",
+                    "role": "space-plan",
+                    "bbox": {"left": 300.0, "top": 260.0, "width": 300.0, "height": 220.0},
+                    "confidence": 0.9,
+                }
+            ],
+            "semantic_regions": [],
+        }
+
+        inventory = pdf_exact_layout._inventory_page(page, 31, 43)
+
+        self.assertEqual(inventory["space_plan_regions"], [])
+        self.assertNotIn("space_plan", inventory["detected_features"])
+        self.assertNotIn("floor_metadata", inventory["detected_features"])
+        self.assertNotIn("space-plan", {region.get("role") for region in inventory["image_regions"]})
+
     def test_footer_address_labels_do_not_supply_map_distribution(self):
         text_spans = [
             {"id": "s", "text": "Central Station", "bbox": {"x": 180.0, "y": 120.0, "width": 100.0, "height": 14.0}},

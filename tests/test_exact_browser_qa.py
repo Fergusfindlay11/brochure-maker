@@ -529,6 +529,39 @@ class TestExactBrowserQA(unittest.TestCase):
             self.assertEqual(qa["layout_audit"]["textOverlapWarnings"], [])
             self.assertEqual(qa["layout_audit"]["textOverlaps"], [])
 
+    def test_write_browser_qa_ignores_estimated_table_column_widths(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = self._write_project(Path(temp_dir), "demo1234", page_count=1)
+            editor_html = """
+            <html><body>
+              <aside class="exact-fields-panel"><div class="global-controls"></div></aside>
+              <main>
+                <section class="exact-page" id="page1" data-page-num="1">
+                  <p class="pdf-text" contenteditable="true"
+                     data-save-id="activity" data-typography-role="body"
+                     data-font-size="15px" data-line-height="16px"
+                     style="position:absolute;top:748px;left:145px;white-space:nowrap">Leaflets to Local Residents with link to Consultation Website</p>
+                  <p class="pdf-text" contenteditable="true"
+                     data-save-id="date" data-typography-role="body"
+                     data-font-size="15px" data-line-height="18px"
+                     style="position:absolute;top:748px;left:343px;white-space:nowrap">March/ April 2023</p>
+                </section>
+              </main>
+            </body></html>
+            """
+            export_html = """
+            <html><body class="export-clean">
+              <main><section class="exact-page" id="page1"></section></main>
+            </body></html>
+            """
+
+            with mock.patch("urllib.request.urlopen", side_effect=self._urlopen(editor_html, export_html, project_dir)):
+                path = write_browser_qa(project_dir, base_url="http://127.0.0.1:8000", force=True)
+
+            qa = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(qa["layout_audit"]["textOverlapWarnings"], [])
+            self.assertEqual(qa["layout_audit"]["textOverlaps"], [])
+
     def test_write_browser_qa_ignores_map_annotation_text_overlap(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_dir = self._write_project(Path(temp_dir), "demo1234", page_count=1)

@@ -1012,6 +1012,8 @@ def _layout_audit(html: str) -> dict[str, Any]:
                     continue
                 if _is_same_line_fragment_false_positive(first, second, overlap):
                     continue
+                if _is_same_line_estimated_column_false_positive(first, second, overlap):
+                    continue
                 if _is_map_annotation_overlap(first, second, overlap):
                     continue
                 ratio = float(overlap["overlap_ratio"])
@@ -1339,6 +1341,29 @@ def _is_same_line_fragment_false_positive(
         or float(second.get("left") or 0) <= float(first.get("left") or 0) <= float(second.get("right") or 0)
     )
     return edge_touch and 0 < overlap_width <= max(44.0, font_size * 2.8)
+
+
+def _is_same_line_estimated_column_false_positive(
+    first: dict[str, Any],
+    second: dict[str, Any],
+    overlap: dict[str, Any],
+) -> bool:
+    """Ignore table-column collisions caused only by estimated natural widths."""
+    if not (bool(first.get("estimated_width")) and bool(second.get("estimated_width"))):
+        return False
+    first_center = float(first.get("top") or 0) + float(first.get("height") or 0) / 2.0
+    second_center = float(second.get("top") or 0) + float(second.get("height") or 0) / 2.0
+    font_size = max(float(first.get("font_size") or 0), float(second.get("font_size") or 0), 1.0)
+    if abs(first_center - second_center) > max(4.0, font_size * 0.35):
+        return False
+    left_delta = abs(float(first.get("left") or 0) - float(second.get("left") or 0))
+    if left_delta < max(72.0, font_size * 4.0):
+        return False
+    overlap_px = overlap.get("overlap_px") if isinstance(overlap.get("overlap_px"), dict) else {}
+    overlap_width = float(overlap_px.get("width") or 0)
+    if overlap_width <= 0:
+        return False
+    return overlap_width < left_delta and overlap_width <= max(132.0, font_size * 9.0)
 
 
 def _is_map_annotation_overlap(

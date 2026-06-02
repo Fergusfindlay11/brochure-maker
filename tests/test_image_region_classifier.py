@@ -115,6 +115,45 @@ class TestImageRegionClassifier(unittest.TestCase):
 
             self.assertNotIn("space-plan", {region["role"] for region in result["image_regions"]})
 
+    def test_plan_number_schedule_linework_does_not_become_space_plan_region(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            background = Path(temp_dir) / "plan-nos-page.png"
+            image = Image.new("RGB", (1000, 700), "#ffffff")
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((650, 50, 900, 170), outline="#111111", width=2)
+            for y in range(80, 170, 30):
+                draw.line((650, y, 900, y), fill="#111111", width=1)
+            image.save(background)
+
+            result = classify_page_image_regions(
+                page_number=32,
+                width=1000,
+                height=700,
+                text_entries=[
+                    {"plain": "DRAFT DECISION LETTER", "top": 80, "left": 380},
+                    {"plain": "Plan Nos:", "top": 210, "left": 120},
+                    {
+                        "plain": "SECOND FLOOR PLAN; 4468-DLG-ZZ-03-DR-A-EX_1004 A-EXISTING THIRD",
+                        "top": 260,
+                        "left": 260,
+                    },
+                    {
+                        "plain": "PLAN; 4468-DLG-ZZ-05-DR-A-EX_1006 B-EXISTING ROOF PLAN; 4468-DLG-ZZ-",
+                        "top": 290,
+                        "left": 260,
+                    },
+                    {
+                        "plain": "4468-DLG-ZZ-00-DR-A-PL_1100 D-PROPOSED LOWER GROUND FLOOR PLAN;",
+                        "top": 340,
+                        "left": 260,
+                    },
+                ],
+                image_slots=[],
+                background_path=background,
+            )
+
+            self.assertNotIn("space-plan", {region["role"] for region in result["image_regions"]})
+
     def test_map_context_region_does_not_become_photo_slot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)

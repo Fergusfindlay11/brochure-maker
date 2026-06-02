@@ -611,9 +611,13 @@ def _page_context(page_number: int, text_entries: list[dict[str, Any]], semantic
     has_plan_semantics = any(kind in region_kinds for kind in ("spaceplan", "floorplan", "floorplans"))
     has_explicit_plan_text = _context_text_has_explicit_space_plan(text)
     has_space_plan_text = _context_text_has_space_plan(text_entries)
+    is_plan_reference_schedule = _context_text_is_plan_reference_schedule(text)
     return {
         "page_number": page_number,
-        "has_space_plan": has_plan_semantics or (has_space_plan_text and not (is_contact_page and not has_explicit_plan_text)),
+        "has_space_plan": (
+            has_plan_semantics or (has_space_plan_text and not (is_contact_page and not has_explicit_plan_text))
+        )
+        and not is_plan_reference_schedule,
         "has_map": "map" in region_kinds or sum(token in text for token in ("station", "walktime", "transport", "bankstation", "underground")) >= 2,
         "is_contact_page": is_contact_page,
         "text_entries": text_entries,
@@ -662,6 +666,12 @@ def _context_text_has_space_plan(text_entries: list[dict[str, Any]]) -> bool:
 
 def _context_text_has_explicit_space_plan(compact_text: str) -> bool:
     return any(token in compact_text for token in ("floorplan", "floorplans", "spaceplan", "spaceplans"))
+
+
+def _context_text_is_plan_reference_schedule(compact_text: str) -> bool:
+    schedule_context = any(token in compact_text for token in ("plannos", "draftdecisionletter", "decisionletter", "reference"))
+    plan_terms = sum(1 for token in ("floorplan", "elevations", "sections", "existing", "proposed") if token in compact_text)
+    return schedule_context and plan_terms >= 3
 
 
 def _compact_text(value: str) -> str:

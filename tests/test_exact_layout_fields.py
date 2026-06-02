@@ -2698,6 +2698,54 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         self.assertEqual({slot["page"] for slot in slots}, {"11"})
         self.assertEqual([slot["key"] for slot in slots], [f"space-plan-p11-{index}" for index in range(1, 5)])
 
+    def test_plan_number_schedule_labels_do_not_create_space_plan_slots(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            assets_dir = Path(temp_dir) / "project-id" / "exact_assets"
+            assets_dir.mkdir(parents=True)
+            background_path = assets_dir / "page032-full.png"
+            Image.new("RGB", (816, 1056), "#ffffff").save(background_path)
+
+            page = {
+                "page_num": 32,
+                "width": 816,
+                "height": 1056,
+                "background_path": str(background_path),
+                "text_entries": [
+                    {"plain": "DRAFT DECISION LETTER", "left": 315, "top": 112, "width": 180},
+                    {"plain": "Plan Nos:", "left": 103, "top": 318, "width": 80},
+                ],
+                "model_text_spans": [
+                    {
+                        "plain": "SECOND FLOOR PLAN; 4468-DLG-ZZ-03-DR-A-EX_1004 A-EXISTING THIRD",
+                        "left": 214,
+                        "top": 396,
+                        "width": 395,
+                    },
+                    {
+                        "plain": "PLAN; 4468-DLG-ZZ-05-DR-A-EX_1006 B-EXISTING ROOF PLAN; 4468-DLG-ZZ-",
+                        "left": 214,
+                        "top": 428,
+                        "width": 408,
+                    },
+                    {
+                        "plain": "4468-DLG-ZZ-00-DR-A-PL_1100 D-PROPOSED LOWER GROUND FLOOR PLAN;",
+                        "left": 214,
+                        "top": 512,
+                        "width": 402,
+                    },
+                ],
+            }
+
+            slots = exact_pdf_layout._build_space_plan_defs([page])
+
+        self.assertEqual(slots, [])
+        self.assertFalse(exact_pdf_layout._has_space_plan_context(page))
+        self.assertFalse(
+            exact_pdf_layout._looks_like_floor_plan_label(
+                "4468-DLG-ZZ-00-DR-A-PL_1100 D-PROPOSED LOWER GROUND FLOOR PLAN;"
+            )
+        )
+
     def test_availability_schedule_does_not_create_space_plan_context(self):
         page = {
             "page_num": 2,
@@ -2716,7 +2764,10 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         self.assertFalse(exact_pdf_layout._has_space_plan_context(page))
         self.assertTrue(exact_pdf_layout._looks_like_availability_schedule_without_space_plan(page))
         self.assertFalse(exact_pdf_layout._looks_like_floor_plan_label("The 4th floor open plan Plug and Play space has been refurbished."))
+        self.assertFalse(exact_pdf_layout._looks_like_floor_plan_label("The proposed extensions would provide additional office floorspace."))
         self.assertTrue(exact_pdf_layout._looks_like_floor_plan_label("4th floor meeting room space"))
+        self.assertTrue(exact_pdf_layout._looks_like_floor_plan_label("Proposed Front Elevation (Bessborough Gardens)"))
+        self.assertTrue(exact_pdf_layout._looks_like_floor_plan_label("Proposed Section showing Fifth Floor Pavilion Level Extension"))
 
     def test_planning_portal_table_becomes_replaceable_table_image_slot(self):
         with tempfile.TemporaryDirectory() as temp_dir:

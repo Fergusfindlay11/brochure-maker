@@ -197,8 +197,8 @@ def _inventory_page(page: dict[str, Any], page_index: int, page_count: int) -> d
     compact = _compact_semantic_text(page_text)
     text_space_plan_regions = _space_plan_inventory(page_number, compact, image_boxes)
     image_space_plan_regions = _space_plan_inventory_from_image_regions(page_number, image_regions)
-    purpose = _infer_page_purpose(compact, page_number, page_count, text_spans, image_boxes, semantic_regions)
-    if _suppresses_contact_page_space_plan(purpose, compact, semantic_regions):
+    purpose = _infer_page_purpose(compact, page_number, page_count, text_spans, image_boxes, semantic_regions, image_regions)
+    if _suppresses_contact_page_space_plan(purpose, compact, semantic_regions) or _suppresses_plan_reference_schedule_space_plan(compact, text_spans):
         text_space_plan_regions = []
         image_space_plan_regions = []
         image_regions = [region for region in image_regions if not (isinstance(region, dict) and region.get("role") == "space-plan")]
@@ -285,6 +285,7 @@ def _infer_page_purpose(
     text_spans: list[dict[str, Any]],
     image_boxes: list[dict[str, Any]],
     semantic_regions: list[dict[str, Any]],
+    image_regions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     region_kinds = {str(region.get("kind") or "") for region in semantic_regions}
     features: set[str] = set()
@@ -344,8 +345,17 @@ def _infer_page_purpose(
     is_final_terms_page = page_count > 1 and page_number == page_count
     is_contact_page = "contacts" in region_kinds and "service_icons" not in features
     if is_final_terms_page or is_contact_page or "misrepresentationact" in compact:
-        purpose, layout_type, confidence = "contacts and terms", "agent contacts with agency logos", max(confidence, 0.82)
-        features.update({"agent_contacts", "agency_logos", "legal_copy"})
+        has_agency_logo_evidence = _has_agency_logo_feature_evidence(
+            semantic_regions,
+            text_spans=text_spans,
+            image_boxes=image_boxes,
+            image_regions=image_regions or [],
+        )
+        layout_type = "agent contacts with agency logos" if has_agency_logo_evidence else "agent contacts and legal text"
+        purpose, confidence = "contacts and terms", max(confidence, 0.82)
+        features.update({"agent_contacts", "legal_copy"})
+        if has_agency_logo_evidence:
+            features.add("agency_logos")
     elif "contacts" in region_kinds:
         features.add("contact_text")
     if image_boxes:
@@ -364,6 +374,52 @@ def _suppresses_contact_page_space_plan(purpose: dict[str, Any], compact: str, s
     region_kinds = {_compact_semantic_text(str(region.get("kind") or region.get("role") or "")) for region in semantic_regions}
     contact_or_terms = "legal_copy" in features or any(kind in region_kinds for kind in ("contacts", "agencylogos", "agentcontacts"))
     return contact_or_terms
+
+
+def _has_agency_logo_feature_evidence(
+    semantic_regions: list[dict[str, Any]],
+    *,
+    text_spans: list[dict[str, Any]],
+    image_boxes: list[dict[str, Any]],
+    image_regions: list[dict[str, Any]],
+) -> bool:
+    for region in image_regions:
+        if str(region.get("role") or region.get("kind") or "") == "agency-logo":
+            return True
+    if any(_image_box_region_role(image, image_regions) == "agency-logo" for image in image_boxes):
+        return True
+
+    spans_by_id = {str(span.get("id") or ""): span for span in text_spans}
+    for region in semantic_regions:
+        kind = _compact_semantic_text(str(region.get("kind") or region.get("role") or ""))
+        if kind not in {"agencylogos", "agencylogo"}:
+            continue
+        span_ids = [str(span_id) for span_id in region.get("span_ids") or []]
+        region_spans = [spans_by_id[span_id] for span_id in span_ids if span_id in spans_by_id]
+        if region_spans and _looks_like_agency_logo_text_band(region_spans):
+            return True
+        text_sample = str(region.get("text_sample") or "")
+        if text_sample and _looks_like_agency_logo_text(text_sample):
+            return True
+    return False
+
+
+def _suppresses_plan_reference_schedule_space_plan(compact: str, text_spans: list[dict[str, Any]]) -> bool:
+    dense = re.sub(r"\s+", "", compact)
+    schedule_context = any(token in dense for token in ("plannos", "draftdecisionletter", "decisionletter", "reference"))
+    plan_terms = sum(1 for token in ("floorplan", "elevation", "elevations", "sections", "existing", "proposed") if token in dense)
+    reference_rows = 0
+    for span in text_spans:
+        text = str(span.get("text") or "")
+        if len(text) <= 42:
+            continue
+        row_compact = re.sub(r"\s+", "", _compact_semantic_text(text))
+        has_plan_word = any(token in row_compact for token in ("floorplan", "elevation", "elevations", "section", "sections"))
+        if not has_plan_word:
+            continue
+        if ";" in text or re.search(r"\b[A-Z0-9]{2,}(?:[-_][A-Z0-9]{1,}){3,}\b", text, flags=re.IGNORECASE):
+            reference_rows += 1
+    return schedule_context and plan_terms >= 3 and reference_rows >= 2
 
 
 def _remove_purpose_features(purpose: dict[str, Any], features_to_remove: set[str]) -> dict[str, Any]:
@@ -1085,12 +1141,15 @@ def _infer_semantic_regions(
     contact_spans = [span for span in text_spans if _looks_like_contact_text(span["text"])]
     if contact_spans:
         regions.append(_spans_region("contacts", page_number, contact_spans))
+        contact_top = min(float(span_item.get("bbox", {}).get("y") or 0) for span_item in contact_spans)
+        band_top = max(0.0, contact_top - max(160.0, page_height * 0.24))
         logo_band_spans = [
             span
             for span in text_spans
-            if span["bbox"]["y"] <= min(span_item["bbox"]["y"] for span_item in contact_spans)
+            if band_top <= float(span.get("bbox", {}).get("y") or 0) <= contact_top - 6.0
+            and not _looks_like_contact_text(str(span.get("text") or ""))
         ]
-        if logo_band_spans:
+        if _looks_like_agency_logo_text_band(logo_band_spans):
             regions.append(_spans_region("agency_logos", page_number, logo_band_spans))
 
     if page_number <= 2:
@@ -1271,6 +1330,61 @@ def _union_bboxes(boxes: list[dict[str, float]]) -> dict[str, float]:
 def _looks_like_contact_text(text: str) -> bool:
     lowered = text.lower()
     return "@" in lowered or bool(re.search(r"\b0\d[\d\s]{8,}\b", lowered))
+
+
+def _looks_like_agency_logo_text_band(spans: list[dict[str, Any]]) -> bool:
+    if not spans:
+        return False
+    text = " ".join(str(span.get("text") or "") for span in spans)
+    if not _looks_like_agency_logo_text(text):
+        return False
+    sizes = [float((span.get("font") or {}).get("size") or 0) for span in spans if isinstance(span.get("font"), dict)]
+    has_prominent_font = any(
+        float((span.get("font") or {}).get("size") or 0) >= 14.0
+        or bool((span.get("font") or {}).get("is_bold"))
+        or "bold" in str((span.get("font") or {}).get("family") or "").lower()
+        for span in spans
+        if isinstance(span.get("font"), dict)
+    )
+    return has_prominent_font or not sizes
+
+
+def _looks_like_agency_logo_text(text: str) -> bool:
+    value = re.sub(r"\s+", " ", text or "").strip()
+    if not value or len(value) > 160:
+        return False
+    lowered = value.lower()
+    if "@" in lowered or re.search(r"\b0\d[\d\s]{8,}\b", lowered):
+        return False
+    prose_terms = (
+        "permission",
+        "condition",
+        "council",
+        "website",
+        "building",
+        "development",
+        "floor",
+        "sq ft",
+        "status",
+        "available",
+        "road",
+        "pavement",
+        "planning",
+        "reference",
+        "policy",
+        "policies",
+    )
+    if any(term in lowered for term in prose_terms):
+        return False
+    words = re.findall(r"[A-Za-z0-9&]+", value)
+    if not words or len(words) > 8:
+        return False
+    alpha_words = [word for word in words if re.search(r"[A-Za-z]", word)]
+    if not alpha_words:
+        return False
+    uppercaseish = sum(1 for word in alpha_words if word.isupper() and len(word) > 1) >= max(1, len(alpha_words) - 1)
+    titleish = sum(1 for word in alpha_words if word[:1].isupper()) >= max(1, len(alpha_words) - 1)
+    return uppercaseish or titleish
 
 
 def _looks_like_heading_span(text: str, font: dict[str, Any]) -> bool:

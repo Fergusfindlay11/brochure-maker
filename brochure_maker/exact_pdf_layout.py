@@ -7364,6 +7364,8 @@ def _build_amenity_icon_defs(amenities: list[dict[str, Any]], pages: list[dict[s
 def _build_space_plan_defs(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     slots: list[dict[str, Any]] = []
     for page in pages:
+        if _looks_like_plan_number_schedule_without_space_plan(page):
+            continue
         label_regions = _space_plan_regions_from_labels(page)
         if label_regions:
             background_path = Path(str(page.get("background_path") or ""))
@@ -7469,6 +7471,8 @@ def _space_plan_regions_from_labels(page: dict[str, Any]) -> list[dict[str, Any]
         for entry in source_entries
         if _looks_like_floor_plan_label(str(entry.get("plain") or ""))
     ]
+    if sum(1 for entry in entries if _looks_like_plan_reference_schedule_label(str(entry.get("plain") or ""))) >= 2:
+        return []
     if len(entries) < 2:
         return []
     page_width = float(page.get("width") or 1)
@@ -7509,11 +7513,57 @@ def _looks_like_floor_plan_label(value: str) -> bool:
     compact = _compact_text(text)
     if not compact:
         return False
-    if "proposed" in compact and ("floor" in compact or "elevation" in compact):
-        return True
+    if _looks_like_plan_reference_schedule_label(text):
+        return False
+    if "proposed" in compact:
+        return _looks_like_proposed_drawing_label(text)
     if len(text) > 42 or re.search(r"[.;:]", text):
         return False
     return bool(re.search(r"\b(?:ground|lower|upper|[1-9](?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth)\s+floor\b", text, flags=re.IGNORECASE))
+
+
+def _looks_like_proposed_drawing_label(text: str) -> bool:
+    if ";" in text:
+        return False
+    compact = _compact_text(text)
+    if "floorspace" in compact:
+        return False
+    if len(text) > 96:
+        return False
+    return bool(
+        re.search(
+            r"^\s*proposed\s+(?:(?:lower|upper|ground|first|second|third|fourth|fifth|sixth|seventh|eighth|roof|front|rear|side|site|north|south|east|west)\s+)*(?:floor|elevation|elevations|section|sections)\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _looks_like_plan_reference_schedule_label(value: str) -> bool:
+    text = str(value or "").strip()
+    if len(text) <= 42:
+        return False
+    compact = _compact_text(text)
+    has_plan_word = any(token in compact for token in ("floorplan", "elevation", "elevations", "section", "sections"))
+    if not has_plan_word:
+        return False
+    reference_like = (
+        ";" in text
+        or re.search(r"\b[A-Z0-9]{2,}(?:[-_][A-Z0-9]{1,}){3,}\b", text, flags=re.IGNORECASE) is not None
+    )
+    return reference_like and any(token in compact for token in ("existing", "proposed", "plannos", "reference"))
+
+
+def _looks_like_plan_number_schedule_without_space_plan(page: dict[str, Any]) -> bool:
+    entries = list(page.get("text_entries") or []) + list(page.get("model_text_spans") or [])
+    texts = [str(entry.get("plain") or entry.get("text") or "") for entry in entries if isinstance(entry, dict)]
+    compact = _compact_text(" ".join(texts))
+    if not compact:
+        return False
+    schedule_context = any(token in compact for token in ("plannos", "draftdecisionletter", "decisionletter", "reference"))
+    plan_terms = sum(1 for token in ("floorplan", "elevation", "elevations", "sections", "existing", "proposed") if token in compact)
+    reference_labels = sum(1 for text in texts if _looks_like_plan_reference_schedule_label(text))
+    return schedule_context and plan_terms >= 3 and reference_labels >= 2
 
 
 def _looks_like_availability_schedule_without_space_plan(page: dict[str, Any]) -> bool:
@@ -7548,6 +7598,8 @@ def _bbox_from_semantic_region(region: dict[str, Any]) -> dict[str, float]:
 
 
 def _has_space_plan_context(page: dict[str, Any]) -> bool:
+    if _looks_like_plan_number_schedule_without_space_plan(page):
+        return False
     compact = _compact_text(" ".join(str(entry.get("plain") or "") for entry in page.get("text_entries", [])))
     if "floor" not in compact and "spaceplan" not in compact:
         return False
