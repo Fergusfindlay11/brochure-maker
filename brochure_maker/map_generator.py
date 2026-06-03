@@ -1,5 +1,7 @@
 """Generate neighbourhood maps using OSM Nominatim + Leaflet + Playwright."""
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import urllib.parse

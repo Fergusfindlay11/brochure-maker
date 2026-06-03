@@ -1,5 +1,7 @@
 """AI Chat — conversational brochure editing via Claude Sonnet 4.6."""
 
+from __future__ import annotations
+
 import json
 import os
 
@@ -7,7 +9,7 @@ import httpx
 from dotenv import load_dotenv
 from pathlib import Path as _Path
 
-load_dotenv(_Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(_Path(__file__).resolve().parent.parent / ".env", override=True)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "anthropic/claude-sonnet-4-6"

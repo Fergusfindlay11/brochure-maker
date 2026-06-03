@@ -12,27 +12,36 @@
   'lock': '<svg viewBox="0 0 36 36" fill="none"><rect x="8" y="17" width="20" height="14" rx="2" stroke="rgba(255,255,255,0.85)" stroke-width="1.4"/><path d="M12 17 V13 A6 6 0 0 1 24 13 V17" stroke="rgba(255,255,255,0.85)" stroke-width="1.4" fill="none"/><circle cx="18" cy="24" r="2.5" stroke="rgba(255,255,255,0.85)" stroke-width="1.3"/></svg>'
 } %}
 
+{% set layout_id = layout_id | default('default') %}
 <div class="slide-label">SLIDE {{ slide_num }} &mdash; HIGHLIGHTS</div>
-<div class="slide-wrapper slide-highlights" id="slide{{ slide_num }}">
+<div class="slide-wrapper slide-highlights" id="slide{{ slide_num }}" data-slide-type="highlights_grid" data-layout-id="{{ layout_id }}">
   <div class="texture"></div>
 
-  <div class="header-bar">
-    <div class="logo-grid logo-zone" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
+  <div class="header-bar" data-slot-id="header">
+    <div class="logo-grid logo-zone" data-slot-id="header-logo" data-logo-size="small" style="width:33px;height:40px;grid-template-columns: repeat(4, 6px); grid-template-rows: repeat(5, 6px); gap: 2px;">
       {% for i in range(20) %}<span style="border-color:rgba(255,255,255,0.5)"></span>{% endfor %}
     </div>
-    <span class="bldg-name">{{ header_name }}</span>
+    <span class="bldg-name" data-slot-id="header-name">{{ header_name }}</span>
   </div>
 
-  <h2>{{ content.heading | default('Highlights') }}</h2>
+  <h2 data-slot-id="heading" contenteditable="true">{{ content.heading | default('Highlights') }}</h2>
 
-  <div class="highlights-grid">
-    {% for feature in content.features %}
-    <div class="highlight-item">
-      <div class="highlight-icon" data-icon-id="{{ feature.icon_hint | default('warehouse') }}" title="Click to change icon">
+  <div class="highlights-grid" data-slot-id="features">
+    {% for feature in content.features | default([]) %}
+    <div class="highlight-item" data-slot-id="feature-{{ loop.index }}">
+      <div class="highlight-icon" data-slot-id="feature-{{ loop.index }}-icon" data-icon-id="{{ feature.icon_hint | default('warehouse') }}" title="Click to change icon">
         {{ icon_map.get(feature.icon_hint, icon_map.warehouse) }}
       </div>
       <div class="highlight-divider"></div>
-      <div class="highlight-text" contenteditable="true">{{ feature.text }}</div>
+      <div class="highlight-text" data-slot-id="feature-{{ loop.index }}-text" contenteditable="true">{{ feature.text | default(feature) }}</div>
+    </div>
+    {% else %}
+    <div class="highlight-item" data-slot-id="feature-1">
+      <div class="highlight-icon" data-slot-id="feature-1-icon" data-icon-id="warehouse" title="Click to change icon">
+        {{ icon_map.warehouse }}
+      </div>
+      <div class="highlight-divider"></div>
+      <div class="highlight-text" data-slot-id="feature-1-text" contenteditable="true">{{ content.body_text | default('Add feature text') }}</div>
     </div>
     {% endfor %}
   </div>

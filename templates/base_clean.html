@@ -25,39 +25,39 @@
 <div class="slides-container">
 {% for slide in slides %}
   {% if slide.type == 'cover' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/cover.html' %}
     {% endwith %}
   {% elif slide.type == 'text_and_photos' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/text_and_photos.html' %}
     {% endwith %}
   {% elif slide.type == 'highlights_grid' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/highlights_grid.html' %}
     {% endwith %}
   {% elif slide.type == 'photo_gallery' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/photo_gallery.html' %}
     {% endwith %}
   {% elif slide.type == 'floor_plan' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/floor_plan.html' %}
     {% endwith %}
   {% elif slide.type == 'services_grid' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/services_grid.html' %}
     {% endwith %}
   {% elif slide.type == 'location' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/location.html' %}
     {% endwith %}
   {% elif slide.type == 'travel_map' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/travel_map.html' %}
     {% endwith %}
   {% elif slide.type == 'contacts' %}
-    {% with slide_num=loop.index, content=slide.content, clean_mode=true %}
+    {% with slide_num=loop.index, content=slide.content, clean_mode=true, slide_type=slide.type, layout_id=slide.layout_id | default(slide.content.layout_id | default('default')) %}
       {% include 'slides/contacts.html' %}
     {% endwith %}
   {% endif %}

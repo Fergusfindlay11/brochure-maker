@@ -165,6 +165,7 @@ document.addEventListener('DOMContentLoaded', function () {
       '.slide-nav', '.settings-panel', '.icon-picker-overlay',
       '.line-picker-overlay', '#pdfOverlay', '.slide-label',
       '.slide-manager-bar', '.text-toolbar', '.ai-rewrite-toolbar',
+      '.layout-chooser', '[data-layout-editor-only]',
       '.route-delete-btn', '.add-line-btn', '.tube-add-btn',
       '#brochureToast', '#brToastStyle',
       '.slides-dropdown-panel', '.chat-sidebar',
