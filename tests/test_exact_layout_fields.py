@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+import time
 import re
 import tempfile
 import unittest
@@ -97,6 +100,211 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         semantic_parser = HtmlTreeParser()
         semantic_parser.feed(self.semantic_html)
         self.semantic_root = semantic_parser.root
+
+    def test_pdf_tool_timeout_kills_stuck_process_group(self):
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            exact_pdf_layout._run_pdf_tool(
+                [
+                    sys.executable,
+                    "-c",
+                    "import signal,time; signal.signal(signal.SIGTERM, lambda *_: None); time.sleep(10)",
+                ],
+                timeout=0.1,
+            )
+
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_full_page_background_falls_back_when_pdftoppm_times_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            assets_dir = Path(tmp)
+            doc = exact_pdf_layout.fitz.open()
+            page = doc.new_page(width=120, height=80)
+            try:
+                with mock.patch.object(exact_pdf_layout.shutil, "which", return_value="/fake/pdftoppm"):
+                    with mock.patch.object(
+                        exact_pdf_layout,
+                        "_run_pdf_tool",
+                        side_effect=subprocess.TimeoutExpired(["pdftoppm"], 0.1),
+                    ):
+                        rendered = exact_pdf_layout._render_full_page_background(
+                            Path("broken.pdf"),
+                            page,
+                            assets_dir,
+                            1,
+                            120,
+                            80,
+                        )
+
+                self.assertEqual(rendered, "page001-full.png")
+                self.assertTrue((assets_dir / rendered).exists())
+            finally:
+                doc.close()
+
+    def test_full_page_background_prefers_model_background_before_pixmap_fallback(self):
+        class NoPixmapPage:
+            def get_pixmap(self, **_kwargs):
+                raise AssertionError("PyMuPDF pixmap fallback should not run when model background exists")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            assets_dir = project_dir / "exact_assets"
+            model_backgrounds = project_dir / "exact_layout_model" / "backgrounds"
+            assets_dir.mkdir()
+            model_backgrounds.mkdir(parents=True)
+            Image.new("RGB", (240, 160), "#ddeeff").save(model_backgrounds / "page-032.png")
+
+            with mock.patch.object(exact_pdf_layout.shutil, "which", return_value="/fake/pdftoppm"):
+                with mock.patch.object(
+                    exact_pdf_layout,
+                    "_run_pdf_tool",
+                    side_effect=subprocess.TimeoutExpired(["pdftoppm"], 0.1),
+                ):
+                    rendered = exact_pdf_layout._render_full_page_background(
+                        Path("broken.pdf"),
+                        NoPixmapPage(),
+                        assets_dir,
+                        32,
+                        120,
+                        80,
+                    )
+
+            self.assertEqual(rendered, "page032-full.png")
+            with Image.open(assets_dir / rendered) as image:
+                self.assertEqual(image.size, (120, 80))
+
+    def test_prepare_exact_pdf_source_uses_qpdf_repaired_copy_when_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            source = project_dir / "source.pdf"
+            source.write_bytes(b"%PDF-1.7\n% source\n")
+
+            def fake_run(cmd, *, timeout):
+                repaired_path = Path(cmd[-1])
+                repaired_path.write_bytes(b"%PDF-1.7\n% repaired\n")
+                return subprocess.CompletedProcess(cmd, 0, "Pages tree repaired", "")
+
+            with mock.patch.object(exact_pdf_layout.shutil, "which", return_value="/fake/qpdf"):
+                with mock.patch.object(exact_pdf_layout, "_run_pdf_tool", side_effect=fake_run):
+                    processed, metadata = exact_pdf_layout.prepare_exact_pdf_source(source, project_dir)
+
+            self.assertEqual(processed, project_dir.resolve() / "source.qpdf.pdf")
+            self.assertTrue(metadata["repaired"])
+            self.assertEqual(metadata["repair_tool"], "qpdf")
+            self.assertIn("Pages tree repaired", metadata["stdout"])
+
+    def test_source_preserve_pdf_page_ops_detects_plan_inventory_evidence(self):
+        self.assertTrue(
+            exact_pdf_layout._should_source_preserve_pdf_page_ops(
+                {"page_number": 31, "image_regions": []},
+                {
+                    "page_number": 31,
+                    "page_purpose": "location introduction",
+                    "detected_features": ["location_copy", "map_context"],
+                    "space_plan_regions": [{"bbox": {"x": 10, "y": 20, "width": 300, "height": 200}}],
+                },
+            )
+        )
+
+    def test_source_preserve_pdf_page_ops_keeps_ordinary_photo_page_editable(self):
+        self.assertFalse(
+            exact_pdf_layout._should_source_preserve_pdf_page_ops(
+                {"page_number": 4, "image_regions": [{"role": "photo-region"}]},
+                {
+                    "page_number": 4,
+                    "page_purpose": "editorial",
+                    "detected_features": ["photo_regions"],
+                },
+            )
+        )
+
+    def test_model_image_slots_for_page_crops_photo_region_from_rendered_background(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "projectx"
+            assets_dir = project_dir / "exact_assets"
+            assets_dir.mkdir(parents=True)
+            background_path = assets_dir / "page001-full.png"
+            image = Image.new("RGB", (200, 120), "#ffffff")
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((50, 20, 150, 80), fill="#224466")
+            image.save(background_path)
+
+            slots = exact_pdf_layout._model_image_slots_for_page(
+                {
+                    "page_number": 1,
+                    "size": {"width": 100, "height": 60},
+                    "image_regions": [
+                        {
+                            "id": "hero",
+                            "role": "hero-photo",
+                            "bbox": {"x": 25, "y": 10, "width": 50, "height": 30},
+                            "confidence": 0.91,
+                        }
+                    ],
+                },
+                {"page_num": 1, "width": 200, "height": 120},
+                background_path,
+            )
+
+            self.assertEqual(len(slots), 1)
+            self.assertEqual(slots[0]["left"], 50)
+            self.assertEqual(slots[0]["top"], 20)
+            self.assertEqual(slots[0]["width"], 100)
+            self.assertEqual(slots[0]["height"], 60)
+            self.assertEqual(slots[0]["image_role"], "hero-photo")
+            self.assertTrue((assets_dir / "images" / "page001-model-image-01.png").exists())
+
+    def test_source_preserved_logo_detection_skips_broad_light_scans_without_marks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            background_path = Path(tmp) / "page001-full.png"
+            Image.new("RGB", (160, 120), "#ffffff").save(background_path)
+            calls: list[str] = []
+
+            def fake_detect(_path, predicate):
+                calls.append(predicate.__name__)
+                return []
+
+            with mock.patch.object(exact_pdf_layout, "_detect_accent_components", side_effect=fake_detect):
+                exact_pdf_layout._build_source_logo_defs(
+                    [
+                        {
+                            "page_num": 1,
+                            "width": 160,
+                            "height": 120,
+                            "background_path": str(background_path),
+                            "source_preserved_edit": True,
+                            "source_image_marks": [],
+                            "image_slots": [],
+                            "text_entries": [],
+                        }
+                    ]
+                )
+
+            self.assertEqual(calls, ["_is_yellow_accent_pixel", "_is_coloured_source_logo_mark_pixel"])
+
+    def test_source_preserved_logo_detection_skips_non_cover_pages_without_marks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            background_path = Path(tmp) / "page002-full.png"
+            Image.new("RGB", (160, 120), "#ffffff").save(background_path)
+
+            with mock.patch.object(exact_pdf_layout, "_detect_accent_components") as detect:
+                slots = exact_pdf_layout._build_source_logo_defs(
+                    [
+                        {
+                            "page_num": 2,
+                            "width": 160,
+                            "height": 120,
+                            "background_path": str(background_path),
+                            "source_preserved_edit": True,
+                            "source_image_marks": [],
+                            "image_slots": [],
+                            "text_entries": [],
+                        }
+                    ]
+                )
+
+            self.assertEqual(slots, [])
+            detect.assert_not_called()
 
     def test_exact_editor_has_a_dedicated_fields_drawer_toggle(self):
         drawer = _find_fields_drawer(self.root)
@@ -1245,6 +1453,48 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         self.assertEqual(config["contacts"][0]["name"], "Nina Carter")
         self.assertEqual(config["contacts"][0]["targets"], ["p3-contact"])
         self.assertIn("agency1", config["agency_logos"])
+
+    def test_plan_page_labels_are_not_promoted_to_global_amenities(self):
+        config = _build_structured_field_config(
+            [
+                {
+                    "page_num": 31,
+                    "width": 900,
+                    "height": 640,
+                    "image_regions": [
+                        {
+                            "role": "space-plan",
+                            "type": "floorplan",
+                            "bbox": {"left": 80, "top": 90, "width": 720, "height": 420},
+                        }
+                    ],
+                    "text_entries": [
+                        {"page_num": 31, "save_id": "exact-page31-text20", "plain": "AMENITIES", "top": 60, "left": 80},
+                        {"page_num": 31, "save_id": "exact-page31-text21", "plain": "Copy/ Print", "top": 140, "left": 120},
+                        {"page_num": 31, "save_id": "exact-page31-text24", "plain": "Work lounge", "top": 180, "left": 120},
+                    ],
+                },
+                {
+                    "page_num": 2,
+                    "text_entries": [
+                        {"page_num": 2, "save_id": "exact-page2-text1", "plain": "FEATURES", "top": 50, "left": 50},
+                        {"page_num": 2, "save_id": "exact-page2-text2", "plain": "Bike Storage", "top": 110, "left": 50},
+                        {"page_num": 2, "save_id": "exact-page2-text3", "plain": "Showers", "top": 110, "left": 220},
+                    ],
+                },
+            ]
+        )
+
+        amenity_targets = {
+            target
+            for amenity in config["amenities"]
+            for target in amenity.get("targets", [])
+        }
+
+        self.assertNotIn("exact-page31-text21", amenity_targets)
+        self.assertNotIn("exact-page31-text24", amenity_targets)
+        self.assertIn("exact-page2-text2", amenity_targets)
+        self.assertIn("exact-page2-text3", amenity_targets)
 
     def test_map_region_infers_v1_payload_and_editable_labels(self):
         config = _build_structured_field_config(

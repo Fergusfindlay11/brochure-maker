@@ -25,7 +25,7 @@ from starlette.responses import StreamingResponse
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 from brochure_maker.pdf_extractor import extract_pdf
-from brochure_maker.exact_pdf_layout import EXACT_ICON_LIBRARY, generate_exact_pdf_layout
+from brochure_maker.exact_pdf_layout import EXACT_ICON_LIBRARY, generate_exact_pdf_layout, prepare_exact_pdf_source
 from brochure_maker.pdf_design_graph import write_design_graph
 from brochure_maker.pdf_exact_layout import write_exact_layout_model
 from brochure_maker.ai_analyser import analyse_brochure, analyse_brochure_streaming
@@ -155,16 +155,18 @@ async def upload_exact_pdf_layout(file: UploadFile = File(...)):
     }
 
     try:
+        processing_pdf_path, pdf_preflight = prepare_exact_pdf_source(pdf_path, project_dir)
         model = write_exact_layout_model(
-            pdf_path,
+            processing_pdf_path,
             project_dir / "exact_layout_model",
             render_dpi=144,
         )
         layout_meta = generate_exact_pdf_layout(
-            pdf_path=pdf_path,
+            pdf_path=processing_pdf_path,
             project_dir=project_dir,
             project_id=project_id,
             output_path=project_dir / "brochure.html",
+            force_source_preserve_vector_ops=bool(pdf_preflight.get("repaired")),
         )
         design_graph_path = write_design_graph(
             model,
@@ -180,6 +182,7 @@ async def upload_exact_pdf_layout(file: UploadFile = File(...)):
             "model_path": model.get("model_path"),
             "inventory_path": model.get("inventory_path"),
             "design_graph_path": str(design_graph_path),
+            "pdf_preflight": pdf_preflight,
         }
         with open(project_dir / "exact_metadata.json", "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)

@@ -193,6 +193,7 @@ def _inventory_page(page: dict[str, Any], page_index: int, page_count: int) -> d
     image_boxes = page.get("image_boxes") if isinstance(page.get("image_boxes"), list) else []
     image_regions = page.get("image_regions") if isinstance(page.get("image_regions"), list) else []
     semantic_regions = page.get("semantic_regions") if isinstance(page.get("semantic_regions"), list) else []
+    text_spans = _filter_tiny_photo_text_artifacts(text_spans, image_regions, page.get("size") if isinstance(page.get("size"), dict) else {})
     page_text = " ".join(str(span.get("text") or "") for span in text_spans)
     compact = _compact_semantic_text(page_text)
     text_space_plan_regions = _space_plan_inventory(page_number, compact, image_boxes)
@@ -252,7 +253,15 @@ def _inventory_page(page: dict[str, Any], page_index: int, page_count: int) -> d
     map_region = next((region for region in semantic_regions if region.get("kind") == "map"), None)
     if "map" not in set(purpose.get("features") or []):
         map_region = None
-    contacts_region = next((region for region in semantic_regions if region.get("kind") == "contacts"), None)
+    contacts_region = next(
+        (
+            region
+            for region in semantic_regions
+            if region.get("kind") == "contacts"
+            and _contact_region_has_contact_evidence(region, text_spans)
+        ),
+        None,
+    )
     amenities_region = next((region for region in semantic_regions if region.get("kind") == "amenities"), None)
     return {
         "page_number": page_number,
@@ -342,8 +351,9 @@ def _infer_page_purpose(
         features.update({"map", "map_labels", "transport_symbols", "subject_property_marker"})
     elif sum(token in dense for token in ("station", "transport", "underground", "rail", "metro", "minutewalk", "walk")) >= 2:
         features.add("map_context")
-    is_final_terms_page = page_count > 1 and page_number == page_count
-    is_contact_page = "contacts" in region_kinds and "service_icons" not in features
+    has_contact_or_terms_evidence = _has_contact_or_terms_evidence(compact, text_spans, semantic_regions)
+    is_final_terms_page = page_count > 1 and page_number == page_count and has_contact_or_terms_evidence
+    is_contact_page = _has_valid_contact_semantic_region(semantic_regions, text_spans) and "service_icons" not in features
     if is_final_terms_page or is_contact_page or "misrepresentationact" in compact:
         has_agency_logo_evidence = _has_agency_logo_feature_evidence(
             semantic_regions,
@@ -356,7 +366,7 @@ def _infer_page_purpose(
         features.update({"agent_contacts", "legal_copy"})
         if has_agency_logo_evidence:
             features.add("agency_logos")
-    elif "contacts" in region_kinds:
+    elif _has_valid_contact_semantic_region(semantic_regions, text_spans):
         features.add("contact_text")
     if image_boxes:
         features.add("photo_regions")
@@ -439,6 +449,90 @@ def _normalise_photo_region_feature(purpose: dict[str, Any], *, has_photo_region
         return purpose
     features = [feature for feature in purpose.get("features") or [] if feature != "photo_regions"]
     return {**purpose, "features": sorted(features)}
+
+
+def _filter_tiny_photo_text_artifacts(
+    text_spans: list[dict[str, Any]],
+    image_regions: list[dict[str, Any]],
+    page_size: dict[str, Any],
+) -> list[dict[str, Any]]:
+    full_photo_regions = [
+        region
+        for region in image_regions
+        if isinstance(region, dict)
+        and str(region.get("role") or "") in {"hero-photo", "photo-region", "photo-grid"}
+        and _region_area_ratio(region, page_size) >= 0.82
+    ]
+    if not full_photo_regions:
+        return text_spans
+    return [
+        span
+        for span in text_spans
+        if not _is_tiny_photo_text_artifact(span, full_photo_regions)
+    ]
+
+
+def _is_tiny_photo_text_artifact(span: dict[str, Any], full_photo_regions: list[dict[str, Any]]) -> bool:
+    text = re.sub(r"\s+", "", str(span.get("text") or ""))
+    if not text or len(text) > 4:
+        return False
+    bbox = span.get("bbox") if isinstance(span.get("bbox"), dict) else {}
+    width = float(bbox.get("width") or 0)
+    height = float(bbox.get("height") or 0)
+    if width > 24 or height > 14 or width * height > 260:
+        return False
+    return any(_span_inside_region_bbox(bbox, region) for region in full_photo_regions)
+
+
+def _region_area_ratio(region: dict[str, Any], page_size: dict[str, Any]) -> float:
+    bbox = region.get("bbox") if isinstance(region.get("bbox"), dict) else {}
+    width = float(bbox.get("width") or 0)
+    height = float(bbox.get("height") or 0)
+    page_width = float(page_size.get("width") or 0)
+    page_height = float(page_size.get("height") or 0)
+    if page_width <= 0 or page_height <= 0:
+        return 0.0
+    return (width * height) / max(1.0, page_width * page_height)
+
+
+def _span_inside_region_bbox(span_bbox: dict[str, Any], region: dict[str, Any]) -> bool:
+    region_bbox = region.get("bbox") if isinstance(region.get("bbox"), dict) else {}
+    span_left = float(span_bbox.get("x") if span_bbox.get("x") is not None else span_bbox.get("left") or 0)
+    span_top = float(span_bbox.get("y") if span_bbox.get("y") is not None else span_bbox.get("top") or 0)
+    span_right = span_left + float(span_bbox.get("width") or 0)
+    span_bottom = span_top + float(span_bbox.get("height") or 0)
+    region_left = float(region_bbox.get("x") if region_bbox.get("x") is not None else region_bbox.get("left") or 0)
+    region_top = float(region_bbox.get("y") if region_bbox.get("y") is not None else region_bbox.get("top") or 0)
+    region_right = region_left + float(region_bbox.get("width") or 0)
+    region_bottom = region_top + float(region_bbox.get("height") or 0)
+    return span_left >= region_left and span_top >= region_top and span_right <= region_right and span_bottom <= region_bottom
+
+
+def _has_contact_or_terms_evidence(compact: str, text_spans: list[dict[str, Any]], semantic_regions: list[dict[str, Any]]) -> bool:
+    if _has_valid_contact_semantic_region(semantic_regions, text_spans):
+        return True
+    if any(token in compact for token in ("misrepresentationact", "viewings", "furtherinformation", "contact", "lettingagent")):
+        return True
+    return any(_looks_like_contact_text(str(span.get("text") or "")) for span in text_spans)
+
+
+def _has_valid_contact_semantic_region(semantic_regions: list[dict[str, Any]], text_spans: list[dict[str, Any]]) -> bool:
+    return any(
+        _contact_region_has_contact_evidence(region, text_spans)
+        for region in semantic_regions
+        if isinstance(region, dict)
+        and _compact_semantic_text(str(region.get("kind") or region.get("role") or "")) in {"contacts", "agentcontacts"}
+    )
+
+
+def _contact_region_has_contact_evidence(region: dict[str, Any], text_spans: list[dict[str, Any]]) -> bool:
+    if _looks_like_contact_text(str(region.get("text_sample") or "")):
+        return True
+    span_ids = [str(span_id) for span_id in region.get("span_ids") or []]
+    if span_ids:
+        spans_by_id = {str(span.get("id") or ""): span for span in text_spans}
+        return any(_looks_like_contact_text(str((spans_by_id.get(span_id) or {}).get("text") or "")) for span_id in span_ids)
+    return any(_looks_like_contact_text(str(span.get("text") or "")) for span in text_spans)
 
 
 def _page_palette_roles(page: dict[str, Any]) -> dict[str, Any]:
@@ -1328,8 +1422,10 @@ def _union_bboxes(boxes: list[dict[str, float]]) -> dict[str, float]:
 
 
 def _looks_like_contact_text(text: str) -> bool:
-    lowered = text.lower()
-    return "@" in lowered or bool(re.search(r"\b0\d[\d\s]{8,}\b", lowered))
+    value = re.sub(r"\s+", " ", text or "").strip()
+    return bool(re.search(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", value, flags=re.IGNORECASE)) or bool(
+        re.search(r"\b0\d[\d\s]{8,}\b", value)
+    )
 
 
 def _looks_like_agency_logo_text_band(spans: list[dict[str, Any]]) -> bool:

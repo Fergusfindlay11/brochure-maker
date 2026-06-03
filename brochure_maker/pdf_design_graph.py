@@ -190,6 +190,8 @@ def _page_elements(
         if not isinstance(span, dict):
             continue
         span_id = str(span.get("id") or f"p{page_number:03d}-text-{index:04d}")
+        if span_id not in role_by_span_id:
+            continue
         role_name = role_by_span_id.get(span_id) or str(span.get("typography_role") or "body")
         typography_token = _typography_token(role_name)
         elements.append(

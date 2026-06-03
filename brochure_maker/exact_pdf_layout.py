@@ -5,8 +5,10 @@ from __future__ import annotations
 import html
 import io
 import json
+import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import unicodedata
@@ -96,12 +98,110 @@ class ExactPdfLayoutError(RuntimeError):
     """Raised when exact PDF layout generation cannot complete."""
 
 
+def _run_pdf_tool(cmd: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
+    """Run a PDF CLI with a real process-group timeout.
+
+    Some damaged PDFs can leave Poppler helpers spinning after the parent call
+    times out. Starting a new session lets us terminate the whole process group
+    before falling back to PyMuPDF or reporting a bounded failure.
+    """
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        _terminate_pdf_tool(process)
+        try:
+            stdout, stderr = process.communicate(timeout=1)
+        except subprocess.TimeoutExpired:
+            stdout, stderr = "", ""
+        raise subprocess.TimeoutExpired(cmd, timeout, output=stdout, stderr=stderr) from exc
+    return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
+
+
+def _terminate_pdf_tool(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except (OSError, ProcessLookupError):
+        process.terminate()
+    try:
+        process.wait(timeout=1)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        process.kill()
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def prepare_exact_pdf_source(pdf_path: str | Path, project_dir: str | Path) -> tuple[Path, dict[str, Any]]:
+    """Prepare a PDF for exact extraction while preserving the uploaded source.
+
+    qpdf is good at normalising damaged page trees that can make Poppler or
+    PyMuPDF spin on otherwise viewable brochures. The original upload remains
+    `source.pdf`; this repaired copy is only the extraction input.
+    """
+    source_path = Path(pdf_path).expanduser().resolve()
+    project_path = Path(project_dir).expanduser().resolve()
+    metadata: dict[str, Any] = {
+        "input_pdf": str(source_path),
+        "processed_pdf": str(source_path),
+        "repair_tool": None,
+        "repaired": False,
+        "warnings": [],
+    }
+    qpdf = shutil.which("qpdf")
+    if not qpdf:
+        metadata["warnings"].append("qpdf not available; using uploaded PDF directly")
+        return source_path, metadata
+
+    repaired_path = project_path / "source.qpdf.pdf"
+    cmd = [
+        qpdf,
+        "--warning-exit-0",
+        "--object-streams=generate",
+        str(source_path),
+        str(repaired_path),
+    ]
+    try:
+        result = _run_pdf_tool(cmd, timeout=45)
+    except subprocess.TimeoutExpired:
+        metadata["repair_tool"] = "qpdf"
+        metadata["warnings"].append("qpdf timed out; using uploaded PDF directly")
+        return source_path, metadata
+    metadata["repair_tool"] = "qpdf"
+    if result.stdout.strip():
+        metadata["stdout"] = result.stdout.strip()[-4000:]
+    if result.stderr.strip():
+        metadata["stderr"] = result.stderr.strip()[-4000:]
+    if result.returncode != 0 or not repaired_path.exists() or repaired_path.stat().st_size <= 0:
+        metadata["warnings"].append("qpdf repair failed; using uploaded PDF directly")
+        return source_path, metadata
+
+    metadata["processed_pdf"] = str(repaired_path)
+    metadata["repaired"] = True
+    return repaired_path, metadata
+
+
 def generate_exact_pdf_layout(
     pdf_path: str | Path,
     project_dir: str | Path,
     project_id: str,
     *,
     output_path: str | Path | None = None,
+    force_source_preserve_vector_ops: bool = False,
 ) -> dict[str, Any]:
     """Convert a PDF into layered, editable, high-fidelity HTML.
 
@@ -139,7 +239,7 @@ def generate_exact_pdf_layout(
             str(target),
         ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=120)
+            result = _run_pdf_tool(cmd, timeout=120)
         except subprocess.TimeoutExpired as exc:
             raise ExactPdfLayoutError("pdftohtml timed out while extracting editable PDF layout") from exc
         if result.returncode != 0:
@@ -154,16 +254,26 @@ def generate_exact_pdf_layout(
             shutil.copy2(image_path, assets_dir / image_path.name)
 
     css, colour_roles, font_styles = _extract_poppler_css(raw_html)
-    pages = _extract_pages(raw_html, project_id, pdf_path, assets_dir, colour_roles, font_styles)
+    exact_model = _load_exact_layout_model(project_dir)
+    exact_inventory = _load_exact_inventory(project_dir)
+    pages = _extract_pages(
+        raw_html,
+        project_id,
+        pdf_path,
+        assets_dir,
+        colour_roles,
+        font_styles,
+        exact_model=exact_model,
+        exact_inventory=exact_inventory,
+        force_source_preserve_vector_ops=force_source_preserve_vector_ops,
+    )
     if not pages:
         raise ExactPdfLayoutError("No pages were extracted from pdftohtml output")
 
     page_width = max(page["width"] for page in pages)
     page_height = max(page["height"] for page in pages)
-    exact_model = _load_exact_layout_model(project_dir)
     _merge_model_image_regions(pages, exact_model)
     _supplement_model_schedule_text(pages)
-    exact_inventory = _load_exact_inventory(project_dir)
     _merge_inventory_map_regions(pages, exact_inventory)
     _refresh_source_preserved_edit_after_region_merges(pages)
     cover_title_bboxes = _model_cover_title_bboxes(exact_model, pages)
@@ -438,9 +548,15 @@ def _extract_pages(
     assets_dir: Path,
     colour_roles: dict[str, str],
     font_styles: dict[str, dict[str, Any]],
+    *,
+    exact_model: dict[str, Any] | None = None,
+    exact_inventory: dict[str, Any] | None = None,
+    force_source_preserve_vector_ops: bool = False,
 ) -> list[dict[str, Any]]:
     doc = fitz.open(pdf_path)
     try:
+        model_pages = _pages_by_number(exact_model)
+        inventory_pages = _pages_by_number(exact_inventory)
         page_matches = list(
             re.finditer(
                 r'<div id="page([0-9]+)-div" style="position:relative;width:([0-9]+)px;height:([0-9]+)px;">(.*?)</div>',
@@ -455,6 +571,11 @@ def _extract_pages(
             width = int(match.group(2))
             height = int(match.group(3))
             inner = match.group(4)
+            source_preserve_only = _should_source_preserve_pdf_page_ops(
+                model_pages.get(page_num, {}),
+                inventory_pages.get(page_num, {}),
+            )
+            skip_vector_ops = force_source_preserve_vector_ops or source_preserve_only
             full_background = _render_full_page_background(
                 pdf_path,
                 doc[page_num - 1],
@@ -495,10 +616,14 @@ def _extract_pages(
                     page_num,
                     assets_dir / full_background,
                 )
-                if page_num <= len(doc)
-                else []
+                if page_num <= len(doc) and not skip_vector_ops
+                else _model_image_slots_for_page(
+                    model_pages.get(page_num, {}),
+                    {"page_num": page_num, "width": width, "height": height},
+                    assets_dir / full_background,
+                )
             )
-            if page_num <= len(doc):
+            if page_num <= len(doc) and not skip_vector_ops:
                 raw_image_slots.extend(
                     _decorative_vector_artwork_slots_for_page(
                         doc[page_num - 1],
@@ -546,7 +671,7 @@ def _extract_pages(
                     project_id,
                     page_num,
                 )
-                if page_num <= len(doc)
+                if page_num <= len(doc) and not skip_vector_ops
                 else []
             )
             vector_layer = (
@@ -558,11 +683,11 @@ def _extract_pages(
                     background_path=assets_dir / full_background,
                     assets_dir=assets_dir,
                 )
-                if page_num <= len(doc)
+                if page_num <= len(doc) and not skip_vector_ops
                 else ""
             )
             vector_path_count = vector_layer.count("<path ")
-            source_preserved_edit = _should_source_preserve_edit(
+            source_preserved_edit = skip_vector_ops or _should_source_preserve_edit(
                 vector_layer=vector_layer,
                 image_regions=image_regions,
                 text_entries=text_entries,
@@ -573,7 +698,11 @@ def _extract_pages(
                 assets_dir / full_background,
                 image_slots,
             )
-            dark_fill_stats = _dark_vector_fill_stats(doc[page_num - 1]) if page_num <= len(doc) else []
+            dark_fill_stats = (
+                _dark_vector_fill_stats(doc[page_num - 1])
+                if page_num <= len(doc) and not skip_vector_ops
+                else []
+            )
             body = background_panels + vector_layer + body
             if image_only_page:
                 body = _suppress_all_text_interaction(body, "full-page-rendered-image")
@@ -601,6 +730,102 @@ def _extract_pages(
         return pages
     finally:
         doc.close()
+
+
+def _pages_by_number(source: dict[str, Any] | None) -> dict[int, dict[str, Any]]:
+    if not isinstance(source, dict):
+        return {}
+    pages = source.get("pages")
+    if not isinstance(pages, list):
+        return {}
+    by_number: dict[int, dict[str, Any]] = {}
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        try:
+            page_number = int(page.get("page_number") or page.get("page_num") or 0)
+        except (TypeError, ValueError):
+            page_number = 0
+        if page_number > 0:
+            by_number[page_number] = page
+    return by_number
+
+
+def _should_source_preserve_pdf_page_ops(model_page: dict[str, Any], inventory_page: dict[str, Any]) -> bool:
+    """Avoid unsafe in-process vector/image PDF operations on dense plan pages."""
+    features = {str(feature) for feature in (inventory_page.get("detected_features") or [])}
+    purpose = _compact_text(str(inventory_page.get("page_purpose") or inventory_page.get("purpose") or ""))
+    if inventory_page.get("space_plan_regions"):
+        return True
+    if inventory_page.get("map_regions"):
+        return True
+    if features.intersection({"space_plan", "floor_metadata", "map", "map_context", "transport_symbols"}):
+        if features.intersection({"space_plan", "floor_metadata"}) or "floor" in purpose or "plan" in purpose:
+            return True
+    model_regions = [
+        region
+        for region in (model_page.get("image_regions") or [])
+        if isinstance(region, dict)
+    ]
+    for region in model_regions:
+        role = str(region.get("role") or region.get("type") or "")
+        if role in {"space-plan", "floor-plan", "map"}:
+            return True
+    return False
+
+
+def _model_image_slots_for_page(
+    model_page: dict[str, Any],
+    render_page: dict[str, Any],
+    background_path: Path,
+) -> list[dict[str, Any]]:
+    """Create bounded replacement slots from model regions on unsafe PDFs."""
+    if not isinstance(model_page, dict) or not background_path.is_file():
+        return []
+    roles = {"photo-region", "photo-grid", "hero-photo", "artwork-image"}
+    page_num = int(render_page.get("page_num") or model_page.get("page_number") or 0)
+    slots: list[dict[str, Any]] = []
+    for index, region in enumerate(model_page.get("image_regions") or [], start=1):
+        if not isinstance(region, dict):
+            continue
+        role = str(region.get("role") or region.get("type") or "")
+        if role not in roles:
+            continue
+        scaled = _scale_model_image_region(region, model_page, render_page)
+        bbox = _bbox_from_semantic_region(scaled)
+        width = float(bbox.get("width") or 0)
+        height = float(bbox.get("height") or 0)
+        if width < 40 or height < 40:
+            continue
+        asset_url = _crop_source_region_asset(
+            background_path,
+            bbox,
+            f"page{page_num:03d}-model-image-{len(slots) + 1:02d}.png",
+        )
+        if not asset_url:
+            continue
+        evidence = scaled.get("source_evidence") if isinstance(scaled.get("source_evidence"), dict) else {}
+        slots.append(
+            {
+                **bbox,
+                "id": str(scaled.get("id") or f"page-{page_num}-model-image-{index}"),
+                "asset_url": asset_url,
+                "mask_colour": _sample_mask_colour(background_path, bbox),
+                "photo_score": 0.0,
+                "fit": "cover",
+                "image_role": role,
+                "candidate_role": role,
+                "semantic_confidence": scaled.get("confidence"),
+                "source_evidence": {
+                    **evidence,
+                    "method": "exact-layout model region crop",
+                    "reason": "PDF was repaired; avoided unsafe embedded image extraction",
+                },
+            }
+        )
+        if len(slots) >= 12:
+            break
+    return _dedupe_image_slots_by_bbox(slots)
 
 
 def _prepare_page_inner(
@@ -1557,7 +1782,7 @@ def _render_full_page_background(
         with tempfile.TemporaryDirectory(prefix="brochure_pdf_bg_") as tmp:
             prefix = Path(tmp) / "page"
             try:
-                result = subprocess.run(
+                result = _run_pdf_tool(
                     [
                         pdftoppm,
                         "-png",
@@ -1570,9 +1795,6 @@ def _render_full_page_background(
                         str(pdf_path),
                         str(prefix),
                     ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
                     timeout=12,
                 )
                 candidates = sorted(Path(tmp).glob("page-*.png"))
@@ -1581,6 +1803,12 @@ def _render_full_page_background(
                     rendered = True
             except subprocess.TimeoutExpired:
                 rendered = False
+
+    if not rendered:
+        model_background = assets_dir.parent / "exact_layout_model" / "backgrounds" / f"page-{page_num:03d}.png"
+        if model_background.exists():
+            shutil.copy2(model_background, output)
+            rendered = True
 
     if not rendered:
         pix = page.get_pixmap(
@@ -4178,14 +4406,30 @@ def _build_structured_field_config(
     cover_title_bboxes: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     entries = [entry for page in pages for entry in page.get("text_entries", [])]
+    plan_or_map_pages = _plan_or_map_page_numbers(pages)
+    map_regions = _build_map_regions(pages)
+    map_region = map_regions[0] if map_regions else {}
+    map_label_fields = _build_map_label_fields_for_regions(map_regions)
+    reserved_map_label_targets = {
+        str(target)
+        for field in map_label_fields
+        for target in field.get("targets", [])
+        if target
+    }
+    amenity_entries = [
+        entry
+        for entry in entries
+        if int(entry.get("page_num") or 0) not in plan_or_map_pages
+        and str(entry.get("save_id") or "") not in reserved_map_label_targets
+    ]
 
     def target(label: str, *, page_num: int | None = None, contains: bool = False) -> dict[str, Any] | None:
         return _find_text_entry(entries, label, page_num=page_num, contains=contains)
 
     cover_title = _build_cover_title_field(entries, cover_title_bboxes=cover_title_bboxes)
     cover_offer = _build_cover_offer_field(entries, set(cover_title["targets"]))
-    amenities_title = _find_section_heading(entries, ("amenities", "features", "specification", "highlights"))
-    amenity_defs = _build_amenity_defs(entries)
+    amenities_title = _find_section_heading(amenity_entries, ("amenities", "features", "specification", "highlights"))
+    amenity_defs = _build_amenity_defs(amenity_entries)
     amenities: list[dict[str, Any]] = []
     for key, label, value, entry, hidden_entries in amenity_defs:
         amenities.append(
@@ -4210,8 +4454,6 @@ def _build_structured_field_config(
 
     contacts = _build_contact_fields(entries)
     agency_logos = _build_agency_logo_defs(contacts, entries, pages)
-    map_regions = _build_map_regions(pages)
-    map_region = map_regions[0] if map_regions else {}
     source_logos = _build_source_logo_defs(pages)
     space_plans = _build_space_plan_defs(pages)
     table_images = _build_table_image_defs(pages)
@@ -4234,7 +4476,7 @@ def _build_structured_field_config(
         "typography": _build_typography_config(entries),
         "map_region": map_region,
         "map_regions": map_regions,
-        "map_label_fields": _build_map_label_fields_for_regions(map_regions),
+        "map_label_fields": map_label_fields,
         "contacts": contacts,
         "agency_logos": agency_logos,
         "contact_defs": {
@@ -4246,6 +4488,31 @@ def _build_structured_field_config(
             for contact in contacts
         },
     }
+
+
+def _plan_or_map_page_numbers(pages: list[dict[str, Any]]) -> set[int]:
+    blocked: set[int] = set()
+    for page in pages:
+        try:
+            page_num = int(page.get("page_num") or 0)
+        except (TypeError, ValueError):
+            page_num = 0
+        if page_num <= 0:
+            continue
+        roles = {
+            str(region.get("role") or region.get("type") or "")
+            for region in page.get("image_regions", []) or []
+            if isinstance(region, dict)
+        }
+        features = {str(feature) for feature in page.get("detected_features", []) or []}
+        if (
+            roles.intersection({"space-plan", "floor-plan", "map"})
+            or features.intersection({"map", "space_plan"})
+            or bool(page.get("map_regions"))
+            or bool(page.get("space_plan_regions"))
+        ):
+            blocked.add(page_num)
+    return blocked
 
 
 def _field_config_image_region(region: dict[str, Any], page: dict[str, Any]) -> dict[str, Any]:
@@ -5701,9 +5968,11 @@ def _build_source_logo_defs(pages: list[dict[str, Any]]) -> list[dict[str, Any]]
         background_path = Path(str(page.get("background_path") or ""))
         if not background_path.is_file():
             continue
+        if not _should_detect_source_logos_for_page(page):
+            continue
         scale = _background_to_page_scale(background_path, page)
         page_slots: list[dict[str, Any]] = []
-        for predicate in (_is_yellow_accent_pixel, _is_coloured_source_logo_mark_pixel, _is_light_source_logo_mark_pixel, _is_accent_pixel):
+        for predicate in _source_logo_predicates_for_page(page):
             page_slots = []
             for component in _detect_accent_components(background_path, predicate):
                 page_component = _scale_component_to_page(component, scale)
@@ -5779,6 +6048,21 @@ def _build_source_logo_defs(pages: list[dict[str, Any]]) -> list[dict[str, Any]]
         page_slots = _merge_source_logo_slot_fragments(page_slots, page)
         slots.extend(_dedupe_source_logo_slots(page_slots))
     return slots
+
+
+def _source_logo_predicates_for_page(page: dict[str, Any]) -> tuple[Any, ...]:
+    if page.get("source_preserved_edit") and not page.get("source_image_marks"):
+        return (_is_yellow_accent_pixel, _is_coloured_source_logo_mark_pixel)
+    return (_is_yellow_accent_pixel, _is_coloured_source_logo_mark_pixel, _is_light_source_logo_mark_pixel, _is_accent_pixel)
+
+
+def _should_detect_source_logos_for_page(page: dict[str, Any]) -> bool:
+    if page.get("source_preserved_edit") and not page.get("source_image_marks"):
+        try:
+            return int(page.get("page_num") or 0) == 1
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 def _detect_accent_components(image_path: Path, pixel_test: Any | None = None) -> list[dict[str, float]]:

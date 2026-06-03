@@ -622,6 +622,118 @@ class TestPdfExactLayout(unittest.TestCase):
         self.assertNotIn("agency_logos", inventory["detected_features"])
         self.assertNotIn("agency logo replacement", inventory["editable_elements"])
 
+    def test_final_building_services_page_is_not_forced_to_contacts(self):
+        text_spans = [
+            {
+                "id": "security",
+                "text": "Security Access control and cctv are provided at grade level.",
+                "bbox": {"x": 60.0, "y": 120.0, "width": 420.0, "height": 14.0},
+                "font": {"family": "ArialMT", "size": 10.0},
+            },
+            {
+                "id": "water",
+                "text": "A boosted potable cold-water supply serves the toilet and welfare facilities.",
+                "bbox": {"x": 60.0, "y": 220.0, "width": 440.0, "height": 14.0},
+                "font": {"family": "ArialMT", "size": 10.0},
+            },
+        ]
+        page = {
+            "page_number": 40,
+            "size": {"width": 1024.0, "height": 768.0, "unit": "pt"},
+            "text_spans": text_spans,
+            "image_boxes": [],
+            "image_regions": [],
+            "semantic_regions": [],
+        }
+
+        inventory = pdf_exact_layout._inventory_page(page, 39, 40)
+
+        self.assertNotEqual(inventory["page_purpose"], "contacts and terms")
+        self.assertNotIn("agent_contacts", inventory["detected_features"])
+        self.assertEqual(inventory["agent_contact_blocks"], [])
+
+    def test_plan_scale_label_with_at_symbol_is_not_contact_text(self):
+        text_spans = [
+            {
+                "id": "scale",
+                "text": "SCALE:  1 : 100 @A0",
+                "bbox": {"x": 338.0, "y": 676.0, "width": 24.0, "height": 4.0},
+                "font": {"family": "ArialNarrow", "size": 3.0},
+            },
+            {
+                "id": "title",
+                "text": "Two-floor unit with interconnecting stair (L5)",
+                "bbox": {"x": 338.0, "y": 668.0, "width": 112.0, "height": 10.0},
+                "font": {"family": "ArialNarrow", "size": 7.0},
+            },
+        ]
+        semantic_regions = pdf_exact_layout._infer_semantic_regions(text_spans, 32, 1024.0, 768.0)
+        page = {
+            "page_number": 32,
+            "size": {"width": 1024.0, "height": 768.0, "unit": "pt"},
+            "text_spans": text_spans,
+            "image_boxes": [],
+            "image_regions": [],
+            "semantic_regions": semantic_regions,
+        }
+
+        inventory = pdf_exact_layout._inventory_page(page, 31, 40)
+
+        self.assertNotIn("contacts", {region["kind"] for region in semantic_regions})
+        self.assertNotIn("agent_contacts", inventory["detected_features"])
+        self.assertEqual(inventory["agent_contact_blocks"], [])
+
+    def test_tiny_text_inside_full_page_photo_is_not_expected_editable_text(self):
+        page = {
+            "page_number": 5,
+            "size": {"width": 1024.0, "height": 768.0, "unit": "pt"},
+            "text_spans": [
+                {
+                    "id": "p005-ocr-text-0001",
+                    "text": "it)",
+                    "bbox": {"x": 625.0, "y": 288.5, "width": 9.5, "height": 5.0},
+                    "font": {"family": "OCRFallback", "size": 10.0},
+                    "color": "#000000",
+                }
+            ],
+            "image_boxes": [
+                {
+                    "id": "p005-image-0001",
+                    "bbox": {"x": 0.0, "y": 0.12, "width": 1024.0, "height": 767.76},
+                    "path": "page-005-image-0001.png",
+                    "source_width": 2134,
+                    "source_height": 1600,
+                    "slot": True,
+                }
+            ],
+            "image_regions": [
+                {
+                    "id": "p005-image-0001",
+                    "role": "hero-photo",
+                    "bbox": {"left": 0.0, "top": 0.12, "width": 1024.0, "height": 767.76},
+                    "confidence": 0.74,
+                }
+            ],
+            "semantic_regions": [],
+        }
+
+        inventory = pdf_exact_layout._inventory_page(page, 4, 40)
+        graph = build_design_graph(
+            {
+                "schema": "brochure-maker.pdf-exact-layout.v1",
+                "source_pdf": "/tmp/source.pdf",
+                "coordinate_system": {"unit": "pt", "origin": "top-left", "bbox": "x, y, width, height"},
+                "pages": [page],
+                "inventory": {"schema": "brochure-maker.extraction-inventory.v1", "pages": [inventory]},
+            },
+            inventory={"schema": "brochure-maker.extraction-inventory.v1", "pages": [inventory]},
+            render_metadata={"field_config": {}},
+        )
+
+        self.assertEqual(inventory["editable_text_blocks"], [])
+        self.assertEqual([element for element in graph["pages"][0]["elements"] if element["type"] == "text"], [])
+        self.assertIn("photo_regions", inventory["detected_features"])
+
     def test_short_prominent_name_above_contact_is_agency_logo_evidence(self):
         text_spans = [
             {
