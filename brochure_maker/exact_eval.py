@@ -319,6 +319,12 @@ def _score_browser_evidence(
     if interactions.get("titleEditFontPreserved") is False:
         blockers.append("Browser title edit did not preserve font")
         penalty += 20
+    if assertions.get("structured_cover_title_targets_semantic") is False:
+        blockers.append("Browser cover title control targets OCR/source artwork text")
+        penalty += 20
+    if assertions.get("edited_text_fits_after_roundtrip") is False:
+        blockers.append("Browser edited text clips or overflows after roundtrip")
+        penalty += 20
     if interactions.get("reloadPreserved") is False:
         blockers.append("Browser reload did not preserve edited state")
         penalty += 20
@@ -331,6 +337,7 @@ def _score_browser_evidence(
             ("exportPreservedEditedText", "Browser interaction probe did not preserve edited text in clean export"),
             ("cleanExportAfterProbeHasNoChrome", "Browser interaction probe clean export contains editor chrome"),
             ("globalColourExported", "Browser interaction probe did not preserve global colours in clean export"),
+            ("editedTextFitsBox", "Browser interaction probe edited text clips or overflows its box"),
             ("imageReplacementRoundtripPreserved", "Browser interaction probe did not preserve image replacements"),
             ("logoReplacementRoundtripPreserved", "Browser interaction probe did not preserve logo replacements"),
             ("mapReplacementRoundtripPreserved", "Browser interaction probe did not preserve map replacements"),

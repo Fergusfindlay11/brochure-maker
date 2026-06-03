@@ -89,6 +89,7 @@ def write_browser_qa(
         "ocr_fallback_text_hidden_until_edit": (
             editor["ocrFallbackTextCount"] == 0 or bool(editor["ocrFallbackHiddenByDefaultCss"])
         ),
+        "structured_cover_title_targets_semantic": int(editor.get("noisyCoverTitleTargetCount") or 0) == 0,
         "export_has_expected_pages": expected_pages > 0 and export["pageCount"] == expected_pages,
         "export_has_no_editor_chrome": (
             export["contenteditableCount"] == 0
@@ -101,6 +102,7 @@ def write_browser_qa(
         "clean_export_preserves_edited_text": bool(interactions.get("exportPreservedEditedText")),
         "clean_export_preserves_global_colour": bool(interactions.get("globalColourExported")),
         "typed_text_font_preserved": bool(interactions.get("titleEditFontPreserved")),
+        "edited_text_fits_after_roundtrip": bool(interactions.get("editedTextFitsBox")),
         "source_preserved_pages_have_no_giant_interactive_hotspots": bool(interaction_audit.get("accepted")),
     }
     if not assertions["editor_has_expected_pages"]:
@@ -123,6 +125,8 @@ def write_browser_qa(
         blockers.append("Browser interaction probe did not confirm map replacement/preserve state persistence/export")
     if not assertions["ocr_fallback_text_hidden_until_edit"]:
         blockers.append("Browser counted OCR fallback text but it is visible by default and duplicates source artwork")
+    if not assertions["structured_cover_title_targets_semantic"]:
+        blockers.append("Cover title control targets OCR fallback/source artwork text instead of a semantic title")
     if not assertions["export_has_expected_pages"]:
         blockers.append("Browser clean export page count does not match design graph")
     if not assertions["export_has_no_editor_chrome"]:
@@ -131,6 +135,8 @@ def write_browser_qa(
         blockers.append("Browser layout audit found overlapping editable text blocks")
     if not assertions["source_preserved_pages_have_no_giant_interactive_hotspots"]:
         blockers.append("Browser interaction audit found giant hover/click hotspots or draggable preserved backgrounds")
+    if not assertions["edited_text_fits_after_roundtrip"]:
+        blockers.append("Edited text target would clip or overflow its fitted box in clean export")
     for key, message in (
         ("state_roundtrip_preserved", "Browser interaction probe did not confirm state roundtrip persistence"),
         ("clean_export_preserves_edited_text", "Browser interaction probe did not confirm edited text in clean export"),
@@ -183,6 +189,8 @@ def _has_required_assertions(payload: dict[str, Any]) -> bool:
             "image_replacement_roundtrip_preserved",
             "logo_replacement_roundtrip_preserved",
             "map_replacement_roundtrip_preserved",
+            "edited_text_fits_after_roundtrip",
+            "structured_cover_title_targets_semantic",
         )
     )
 
@@ -343,6 +351,7 @@ def _interaction_probe(
     )
     export_summary = _export_summary(export_html, _page_count(editor_html))
     export_target = _export_text_target(export_html, str(target["save_id"]))
+    export_text_fit = _export_text_fit_audit(export_target)
     export_text_ok = marker in export_html
     export_chrome_ok = (
         export_summary["contenteditableCount"] == 0
@@ -388,6 +397,7 @@ def _interaction_probe(
             (export_text_ok, "Clean export did not include edited probe text"),
             (export_chrome_ok, "Clean export contained editor chrome after probe"),
             (font_preserved, "Edited text target did not preserve typography metadata in export"),
+            (bool(export_text_fit.get("accepted")), "Edited text target would clip or overflow its fitted box in clean export"),
             (colour_exported, "Clean export did not include probed global colours"),
             (image_state_ok, "State probe GET did not return edited image slot"),
             (image_export_ok, "Clean export did not include probed image replacement"),
@@ -414,6 +424,8 @@ def _interaction_probe(
         "cleanExportAfterProbeHasNoChrome": bool(export_chrome_ok),
         "globalColourExported": bool(colour_exported),
         "titleEditFontPreserved": bool(font_preserved),
+        "editedTextFitsBox": bool(export_text_fit.get("accepted")),
+        "editedTextFitAudit": export_text_fit,
         "imageReplacementRoundtripPreserved": bool(image_state_ok and image_export_ok),
         "logoReplacementRoundtripPreserved": bool(logo_state_ok and logo_export_ok),
         "mapReplacementRoundtripPreserved": bool(map_state_ok and map_export_ok),
@@ -432,11 +444,13 @@ def _editor_summary(html: str, expected_pages: int) -> dict[str, Any]:
     source_preserved_edit_count = 0
     media_slots: list[dict[str, Any]] = []
     page_boxes: list[dict[str, Any]] = []
+    noisy_cover_title_targets: list[str] = []
     try:
         from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(html, "html.parser")
         pages = soup.select(".exact-page")
+        noisy_cover_title_targets = _structured_cover_title_noisy_targets(soup)
         page_layouts = [str(page.get("data-picture-layout") or "") for page in pages]
         source_preserved_edit_count = sum(
             1 for page in pages if str(page.get("data-source-preserved-edit") or "").lower() == "true"
@@ -476,6 +490,8 @@ def _editor_summary(html: str, expected_pages: int) -> dict[str, Any]:
         "mapSlotCount": sum(1 for slot in media_slots if slot.get("kind") == "map"),
         "sourcePreservedEditPageCount": source_preserved_edit_count,
         "ocrFallbackTextCount": _class_count(html, "exact-ocr-text"),
+        "noisyCoverTitleTargetCount": len(noisy_cover_title_targets),
+        "noisyCoverTitleTargets": noisy_cover_title_targets[:12],
         "ocrFallbackHiddenByDefaultCss": (
             "exact-ocr-text:not([data-active-edit=\"true\"]):not([data-edited=\"true\"])" in html
             and "color: transparent !important" in html
@@ -491,6 +507,44 @@ def _editor_summary(html: str, expected_pages: int) -> dict[str, Any]:
         "mediaSlotCount": len(media_slots),
         "pageBoxes": page_boxes,
     }
+
+
+def _structured_cover_title_noisy_targets(soup: Any) -> list[str]:
+    noisy: list[str] = []
+    for control in soup.select('[data-exact-field="coverTitle"][data-targets]'):
+        target_ids = [
+            part.strip()
+            for part in str(control.get("data-targets") or "").split(",")
+            if part.strip()
+        ]
+        for save_id in target_ids:
+            node = soup.select_one(f'[data-save-id="{_css_attr(save_id)}"]')
+            if node is not None and _is_noisy_ocr_text_node(node):
+                noisy.append(save_id)
+    return noisy
+
+
+def _is_noisy_ocr_text_node(node: Any) -> bool:
+    if str(node.get("data-ocr-fallback") or "").lower() != "true":
+        return False
+    role = str(node.get("data-typography-role") or "body")
+    if role in {"cover-title", "section-heading"}:
+        return False
+    original = _normalise_space(str(node.get("data-plain-text") or node.get_text(" ", strip=True) or ""))
+    font_size = _css_px(node.get("data-font-size"), _style_px(str(node.get("style") or ""), "font-size") or 0.0)
+    return 0 < len(original.replace(" ", "")) <= 4 and font_size >= 96
+
+
+def _is_low_signal_interaction_text_node(node: Any) -> bool:
+    if _is_noisy_ocr_text_node(node):
+        return True
+    if str(node.get("data-ocr-fallback") or "").lower() != "true":
+        return False
+    role = str(node.get("data-typography-role") or "body")
+    if role in {"cover-title", "section-heading"}:
+        return False
+    original = _normalise_space(str(node.get("data-plain-text") or node.get_text(" ", strip=True) or ""))
+    return 0 < len(original.replace(" ", "")) <= 4
 
 
 def _media_slots_for_page(page: Any) -> list[dict[str, Any]]:
@@ -894,13 +948,23 @@ def _interaction_text_target(html: str) -> dict[str, Any] | None:
     except Exception:
         return None
     soup = BeautifulSoup(html, "html.parser")
-    candidates = soup.select('.pdf-text[contenteditable="true"][data-save-id]')
+    candidates = [
+        node
+        for node in soup.select('.pdf-text[contenteditable="true"][data-save-id]')
+        if not _is_low_signal_interaction_text_node(node)
+    ]
     if not candidates:
         return None
+    def page_number(node: Any) -> int:
+        page = node.find_parent(class_="exact-page")
+        return _node_page_number(page) if page else 0
+
     ranked = sorted(
         candidates,
         key=lambda node: (
+            0 if page_number(node) == 1 or str(node.get("data-save-id") or "").startswith("exact-page1-") else 1,
             0 if node.get("data-typography-role") == "cover-title" else 1,
+            0 if str(node.get("data-ocr-fallback") or "").lower() == "true" else 1,
             0 if str(node.get_text(" ", strip=True)).strip() else 1,
         ),
     )
@@ -981,11 +1045,38 @@ def _export_text_target(html: str, save_id: str) -> dict[str, Any] | None:
     if not node:
         return None
     return {
+        "save_id": save_id,
         "role": str(node.get("data-typography-role") or ""),
         "font_alias": str(node.get("data-font-alias") or ""),
         "font_family": str(node.get("data-font-family") or ""),
         "style": str(node.get("style") or ""),
         "text": node.get_text(" ", strip=True),
+    }
+
+
+def _export_text_fit_audit(target: dict[str, Any] | None) -> dict[str, Any]:
+    if not target:
+        return {"accepted": False, "reason": "export target missing", "blockers": ["Export text target not found"]}
+    style = str(target.get("style") or "")
+    text = _normalise_space(str(target.get("text") or ""))
+    width = _style_px(style, "width")
+    font_size = _style_px(style, "font-size")
+    white_space = _style_value(style, "white-space").lower()
+    blockers: list[str] = []
+    estimated_width = None
+    if text and width is not None and font_size is not None:
+        estimated_width = _estimated_text_width(text, font_size)
+        if white_space in {"nowrap", "pre"} and estimated_width > width * 1.15:
+            blockers.append("Edited text is wider than its nowrap text box")
+    return {
+        "accepted": not blockers,
+        "saveId": str(target.get("save_id") or ""),
+        "textLength": len(text),
+        "width": round(width, 2) if width is not None else None,
+        "fontSize": round(font_size, 2) if font_size is not None else None,
+        "estimatedNaturalWidth": round(estimated_width, 2) if estimated_width is not None else None,
+        "whiteSpace": white_space,
+        "blockers": blockers,
     }
 
 
@@ -1197,11 +1288,20 @@ def _estimated_text_width(text: str, font_size: float) -> float:
     return total * max(1.0, font_size)
 
 
+def _normalise_space(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").replace("\xa0", " ")).strip()
+
+
 def _style_px(style: str, key: str) -> float | None:
     match = re.search(rf"(?:^|;)\s*{re.escape(key)}\s*:\s*(-?\d+(?:\.\d+)?)px", style, flags=re.I)
     if not match:
         return None
     return float(match.group(1))
+
+
+def _style_value(style: str, key: str) -> str:
+    match = re.search(rf"(?:^|;)\s*{re.escape(key)}\s*:\s*([^;]+)", style, flags=re.I)
+    return match.group(1).strip() if match else ""
 
 
 def _css_px(value: Any, fallback: float) -> float:

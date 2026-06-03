@@ -334,6 +334,12 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         self.assertIn('data-picture-layout="editable"', self.html)
         self.assertIn("page.dataset.imageLayout = kind;", self.html)
 
+    def test_cover_title_structured_edits_fit_pdf_text_boxes(self):
+        self.assertIn("function fitCoverTitleTextBox", self.html)
+        self.assertIn("fitCoverTitleTextBox(target);", self.html)
+        self.assertIn("['font-size', 'fontSize']", self.html)
+        self.assertIn("['line-height', 'lineHeight']", self.html)
+
     def test_extracted_palette_from_inventory_drives_global_colour_controls(self):
         theme = _theme_colours_from_inventory(
             {
@@ -2161,6 +2167,36 @@ class TestExactLayoutStructuredFields(unittest.TestCase):
         )
         self.assertEqual(config["cover_title"]["value"], "ANCHOR HOUSE")
         self.assertEqual(config["cover_title"]["targets"], ["exact-page1-text1"])
+
+    def test_short_body_ocr_logo_fragment_is_not_cover_title_target(self):
+        config = _build_structured_field_config(
+            [
+                {
+                    "page_num": 1,
+                    "width": 1365,
+                    "height": 1024,
+                    "body": "",
+                    "image_slots": [],
+                    "text_entries": [
+                        {
+                            "save_id": "exact-page1-text1",
+                            "page_num": 1,
+                            "plain": "Hie",
+                            "typography_role": "body",
+                            "ocr_fallback": True,
+                            "font_style": {"font_size_px": 341.32},
+                            "left": 239,
+                            "top": 328,
+                        }
+                    ],
+                }
+            ]
+        )
+
+        self.assertEqual(config["cover_title"]["value"], "")
+        self.assertEqual(config["cover_title"]["targets"], [])
+        self.assertEqual(config["cover_offer"]["value"], "")
+        self.assertEqual(config["cover_offer"]["targets"], [])
 
     def test_headingless_feature_grid_becomes_amenity_icon_controls(self):
         entries = []

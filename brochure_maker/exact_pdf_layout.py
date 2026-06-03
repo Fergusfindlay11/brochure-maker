@@ -6660,6 +6660,7 @@ def _build_cover_title_field(
         entry
         for entry in page_entries
         if entry.get("typography_role") == "cover-title"
+        and not _is_noisy_ocr_cover_title_candidate(entry)
     ]
     if not candidates:
         sizes = [_font_size_px(entry) for entry in page_entries]
@@ -6669,12 +6670,14 @@ def _build_cover_title_field(
             for entry in page_entries
             if _font_size_px(entry) >= max(28.0, median * 1.45)
             and _looks_like_cover_title_piece(str(entry.get("plain") or ""))
+            and not _is_noisy_ocr_cover_title_candidate(entry)
         ]
     if not candidates:
         candidates = [
             entry
             for entry in sorted(page_entries, key=lambda item: (float(item.get("top") or 0), float(item.get("left") or 0)))
             if _looks_like_cover_title_piece(str(entry.get("plain") or ""))
+            and not _is_noisy_ocr_cover_title_candidate(entry)
         ][:4]
 
     vertical_groups = _vertical_cover_title_groups(candidates)
@@ -6698,6 +6701,16 @@ def _build_cover_title_field(
         "value": "\n".join(str(entry.get("plain") or "").strip() for entry in candidates if str(entry.get("plain") or "").strip()),
         "groups": [],
     }
+
+
+def _is_noisy_ocr_cover_title_candidate(entry: dict[str, Any]) -> bool:
+    if not entry.get("ocr_fallback"):
+        return False
+    role = str(entry.get("typography_role") or "body")
+    if role in {"cover-title", "section-heading"}:
+        return False
+    text = re.sub(r"\s+", "", str(entry.get("plain") or ""))
+    return 0 < len(text) <= 4 and _font_size_px(entry) >= 96
 
 
 def _vertical_cover_title_groups(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -6850,6 +6863,7 @@ def _build_cover_offer_field(entries: list[dict[str, Any]], title_targets: set[s
         and entry.get("save_id") not in title_targets
         and str(entry.get("typography_role") or "body") not in {"caption", "table-status", "agent-contact"}
         and _looks_like_cover_offer(str(entry.get("plain") or ""))
+        and not _is_noisy_ocr_cover_title_candidate(entry)
     ]
     page_entries = sorted(page_entries, key=lambda item: (float(item.get("top") or 0), float(item.get("left") or 0)))
     return {
@@ -10455,13 +10469,25 @@ def _exact_editor_js() -> str:
     return normalisePlainText(container.textContent || '');
   }
 
+  function isNoisyOcrTextTarget(el) {
+    if (!el || el.dataset.ocrFallback !== 'true') return false;
+    var role = el.dataset.typographyRole || 'body';
+    if (role === 'cover-title' || role === 'section-heading') return false;
+    var originalPlain = normalisePlainText(el.getAttribute('data-plain-text') || plainTextFromHtml(el.getAttribute('data-original-html') || ''));
+    var fontSize = parseFloat(el.dataset.fontSize || getComputedStyle(el).fontSize) || 0;
+    return originalPlain.length > 0 && originalPlain.length <= 4 && fontSize >= 96;
+  }
+
   function shouldApplySavedTextState(el, item) {
     if (!el || !item || typeof item !== 'object' || typeof item.html !== 'string') return false;
-    if (item.edited === true) return true;
-    if (item.edited !== false) return true;
     var savedPlain = plainTextFromHtml(item.html);
     var currentPlain = normalisePlainText(el.getAttribute('data-plain-text') || '');
     var originalPlain = plainTextFromHtml(el.getAttribute('data-original-html') || '');
+    if (isNoisyOcrTextTarget(el) && savedPlain && savedPlain !== currentPlain && (!originalPlain || originalPlain === currentPlain)) {
+      return false;
+    }
+    if (item.edited === true) return true;
+    if (item.edited !== false) return true;
     return !(savedPlain && currentPlain && savedPlain !== currentPlain && (!originalPlain || originalPlain === currentPlain));
   }
 
@@ -10579,7 +10605,11 @@ def _exact_editor_js() -> str:
       ['top', 'top'],
       ['width', 'width'],
       ['height', 'height'],
+      ['font-size', 'fontSize'],
+      ['line-height', 'lineHeight'],
       ['white-space', 'whiteSpace'],
+      ['overflow-wrap', 'overflowWrap'],
+      ['word-break', 'wordBreak'],
       ['display', 'display'],
       ['align-items', 'alignItems'],
       ['justify-content', 'justifyContent'],
@@ -10651,6 +10681,47 @@ def _exact_editor_js() -> str:
     var width = Math.max(baseWidth, textLength > 64 ? 260 : 175);
     el.style.width = width + 'px';
     el.style.whiteSpace = 'normal';
+  }
+
+  function fitCoverTitleTextBox(el) {
+    if (!el) return;
+    el.dataset.structuredField = 'true';
+    el.dataset.coverTitleFit = 'true';
+    var text = (el.textContent || '').trim();
+    if (!text) return;
+    var computed = getComputedStyle(el);
+    if (!el.dataset.coverOriginalFontSize) {
+      el.dataset.coverOriginalFontSize = String(parseFloat(el.dataset.fontSize || computed.fontSize) || 0);
+    }
+    if (!el.dataset.coverOriginalLineHeight) {
+      el.dataset.coverOriginalLineHeight = String(parseFloat(el.dataset.lineHeight || computed.lineHeight) || 0);
+    }
+    var originalFont = parseFloat(el.dataset.coverOriginalFontSize || computed.fontSize) || 16;
+    var originalLine = parseFloat(el.dataset.coverOriginalLineHeight || computed.lineHeight) || originalFont * 1.08;
+    el.style.fontSize = originalFont.toFixed(2) + 'px';
+    el.style.lineHeight = originalLine.toFixed(2) + 'px';
+    el.style.whiteSpace = 'nowrap';
+    el.style.overflowWrap = '';
+    el.style.wordBreak = '';
+
+    var boxWidth = el.clientWidth || parseFloat(el.style.width) || parseFloat(el.dataset.originalBoxWidth) || 0;
+    if (!boxWidth) return;
+    var attempts = 0;
+    var minFont = 12;
+    while (el.scrollWidth > boxWidth * 1.02 && attempts < 12) {
+      var current = parseFloat(getComputedStyle(el).fontSize) || originalFont;
+      if (current <= minFont) break;
+      var ratio = Math.max(0.08, Math.min(0.92, boxWidth / Math.max(1, el.scrollWidth)));
+      var next = Math.max(minFont, current * ratio);
+      el.style.fontSize = next.toFixed(2) + 'px';
+      el.style.lineHeight = Math.max(next * 1.08, next + 2).toFixed(2) + 'px';
+      attempts += 1;
+    }
+    if (el.scrollWidth > boxWidth * 1.05) {
+      el.style.whiteSpace = 'normal';
+      el.style.overflowWrap = 'anywhere';
+      el.style.wordBreak = 'break-word';
+    }
   }
 
   function spacedCaps(value) {
@@ -10803,6 +10874,7 @@ def _exact_editor_js() -> str:
             if (!target) return;
             touched[saveId] = true;
             setEditableHtml(target, escapeHtml(pieces[index] || ''), { preserveNoWrap: true });
+            fitCoverTitleTextBox(target);
           });
         });
         targets.forEach(function (target) {
@@ -10811,6 +10883,7 @@ def _exact_editor_js() -> str:
       } else {
         targets.forEach(function (target, index) {
           setEditableHtml(target, escapeHtml(lines[index] || ''), { preserveNoWrap: true });
+          fitCoverTitleTextBox(target);
         });
       }
     } else {

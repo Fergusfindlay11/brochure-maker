@@ -467,6 +467,7 @@ def _apply_exact_static_state(soup: Any, state: dict, agency_defs: dict) -> None
     _apply_exact_typography_state(soup, state)
     _normalise_exact_source_logo_masks(soup)
     _apply_exact_text_state(soup, state)
+    _remove_noisy_exact_ocr_text_targets(soup)
     _apply_exact_image_state(soup, state)
     _apply_exact_amenity_icon_state(soup, state)
     _apply_exact_logo_state(soup, state)
@@ -585,22 +586,52 @@ def _apply_exact_text_state(soup: Any, state: dict) -> None:
             _apply_exact_text_layout_state(target, item)
             if item.get("edited"):
                 target["data-edited"] = "true"
+            _fit_exact_export_text_box(target)
 
 
 def _exact_saved_text_applies(target: Any, item: dict) -> bool:
+    saved_plain = _plain_text_from_exact_html(item.get("html"))
+    current_plain = _normalise_exact_plain_text(target.get("data-plain-text") or "")
+    original_plain = _plain_text_from_exact_html(target.get("data-original-html") or "")
+    if (
+        _is_noisy_exact_ocr_text_target(target)
+        and saved_plain
+        and current_plain
+        and saved_plain != current_plain
+        and (not original_plain or original_plain == current_plain)
+    ):
+        return False
     if item.get("edited") is True:
         return True
     if item.get("edited") is not False:
         return True
-    saved_plain = _plain_text_from_exact_html(item.get("html"))
-    current_plain = _normalise_exact_plain_text(target.get("data-plain-text") or "")
-    original_plain = _plain_text_from_exact_html(target.get("data-original-html") or "")
     return not (
         saved_plain
         and current_plain
         and saved_plain != current_plain
         and (not original_plain or original_plain == current_plain)
     )
+
+
+def _is_noisy_exact_ocr_text_target(target: Any) -> bool:
+    if str(target.get("data-ocr-fallback") or "").lower() != "true":
+        return False
+    role = str(target.get("data-typography-role") or "body")
+    if role in {"cover-title", "section-heading"}:
+        return False
+    original_plain = _normalise_exact_plain_text(
+        target.get("data-plain-text") or _plain_text_from_exact_html(target.get("data-original-html") or "")
+    )
+    font_size = _exact_style_px(str(target.get("style") or ""), "font-size")
+    if font_size is None:
+        font_size = _css_px(target.get("data-font-size"), 0.0)
+    return 0 < len(original_plain) <= 4 and float(font_size or 0) >= 96
+
+
+def _remove_noisy_exact_ocr_text_targets(soup: Any) -> None:
+    for target in list(soup.select('.pdf-text[data-ocr-fallback="true"]')):
+        if _is_noisy_exact_ocr_text_target(target):
+            target.decompose()
 
 
 def _normalise_exact_plain_text(value: Any) -> str:
@@ -629,7 +660,11 @@ def _apply_exact_text_layout_state(target: Any, item: dict) -> None:
             "top",
             "width",
             "height",
+            "font-size",
+            "line-height",
             "white-space",
+            "overflow-wrap",
+            "word-break",
             "display",
             "align-items",
             "justify-content",
@@ -646,6 +681,70 @@ def _apply_exact_text_layout_state(target: Any, item: dict) -> None:
         target["data-title-stack"] = "true"
     if layout.get("hidden"):
         target["class"] = sorted(set(target.get("class", [])) | {"exact-field-hidden"})
+
+
+def _fit_exact_export_text_box(target: Any) -> None:
+    style = str(target.get("style") or "")
+    text = _normalise_exact_plain_text(target.get_text(" ", strip=True) if hasattr(target, "get_text") else "")
+    if not text:
+        return
+    width = _exact_style_px(style, "width")
+    font_size = _exact_style_px(style, "font-size")
+    if width is None or font_size is None or width <= 0 or font_size <= 0:
+        return
+    white_space = _exact_style_value(style, "white-space").lower()
+    if white_space and white_space not in {"nowrap", "pre"}:
+        return
+    estimated = _estimated_exact_text_width(text, font_size)
+    if estimated <= width * 1.05:
+        return
+    next_font = max(12.0, font_size * max(0.08, min(0.92, width / max(1.0, estimated))))
+    updates = {
+        "font-size": f"{next_font:.2f}px",
+        "line-height": f"{max(next_font * 1.08, next_font + 2):.2f}px",
+    }
+    if _estimated_exact_text_width(text, next_font) > width * 1.05:
+        updates.update(
+            {
+                "white-space": "normal",
+                "overflow-wrap": "anywhere",
+                "word-break": "break-word",
+            }
+        )
+    _merge_style(target, updates)
+
+
+def _estimated_exact_text_width(text: str, font_size: float) -> float:
+    total = 0.0
+    for char in text:
+        if char.isspace():
+            factor = 0.28
+        elif char in ".,:;!'|":
+            factor = 0.24
+        elif char in "ilI[](){}":
+            factor = 0.30
+        elif char in "mwMW@#%&":
+            factor = 0.72
+        elif char.isupper():
+            factor = 0.56
+        elif char.isdigit():
+            factor = 0.50
+        else:
+            factor = 0.46
+        total += factor
+    return total * max(1.0, font_size)
+
+
+def _exact_style_px(style: str, key: str) -> float | None:
+    match = re.search(rf"(?:^|;)\s*{re.escape(key)}\s*:\s*(-?\d+(?:\.\d+)?)px", style, flags=re.I)
+    if not match:
+        return None
+    return float(match.group(1))
+
+
+def _exact_style_value(style: str, key: str) -> str:
+    match = re.search(rf"(?:^|;)\s*{re.escape(key)}\s*:\s*([^;]+)", style, flags=re.I)
+    return match.group(1).strip() if match else ""
 
 
 def _apply_exact_image_state(soup: Any, state: dict) -> None:

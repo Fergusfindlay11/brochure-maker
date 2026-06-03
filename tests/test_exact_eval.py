@@ -244,7 +244,11 @@ class TestExactEval(unittest.TestCase):
                             "toolbar": 0,
                             "bodyClass": "export-clean",
                         },
-                        "assertions": {"global_controls_visible": True},
+                        "assertions": {
+                            "global_controls_visible": True,
+                            "edited_text_fits_after_roundtrip": True,
+                            "structured_cover_title_targets_semantic": True,
+                        },
                         "interactions": {
                             "titleEditFontPreserved": True,
                             "reloadPreserved": True,
@@ -252,6 +256,7 @@ class TestExactEval(unittest.TestCase):
                             "exportPreservedEditedText": True,
                             "cleanExportAfterProbeHasNoChrome": True,
                             "globalColourExported": True,
+                            "editedTextFitsBox": True,
                             "imageReplacementRoundtripPreserved": True,
                             "logoReplacementRoundtripPreserved": True,
                             "mapReplacementRoundtripPreserved": True,
@@ -319,9 +324,15 @@ class TestExactEval(unittest.TestCase):
                         "exportPreservedEditedText": True,
                         "cleanExportAfterProbeHasNoChrome": True,
                         "globalColourExported": True,
+                        "editedTextFitsBox": True,
                         "imageReplacementRoundtripPreserved": True,
                         "logoReplacementRoundtripPreserved": True,
                         "mapReplacementRoundtripPreserved": True,
+                    },
+                    "assertions": {
+                        "global_controls_visible": True,
+                        "edited_text_fits_after_roundtrip": True,
+                        "structured_cover_title_targets_semantic": True,
                     },
                     "visual_diff": {
                         "score": 97,

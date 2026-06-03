@@ -101,6 +101,38 @@ class TestExactExport(unittest.TestCase):
         self.assertIn("page002-full.png", html)
         self.assertIn('class="pdf-bg"', html)
 
+    def test_exact_export_removes_noisy_ocr_source_mark_fragments(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir)
+            (project_dir / "exact_metadata.json").write_text(
+                json.dumps({"page_width": 1365, "page_height": 1024}),
+                encoding="utf-8",
+            )
+            (project_dir / "brochure.html").write_text(
+                """
+                <html><head></head><body>
+                  <main>
+                    <section class="exact-page" data-page-num="1">
+                      <img class="pdf-bg" src="/api/projects/demo/exact_assets/page001-full.png">
+                      <p class="pdf-text exact-ocr-text" data-save-id="exact-page1-text1"
+                         data-ocr-fallback="true" data-typography-role="body"
+                         data-font-size="341.32px" data-plain-text="Hie"
+                         style="font-size:341.32px;width:441px;white-space:nowrap">Hie</p>
+                      <p class="pdf-text exact-ocr-text" data-save-id="exact-page1-text2"
+                         data-ocr-fallback="true" data-typography-role="section-heading"
+                         data-font-size="37px" data-plain-text="SCHEDULE">SCHEDULE</p>
+                    </section>
+                  </main>
+                </body></html>
+                """,
+                encoding="utf-8",
+            )
+
+            html = _prepare_exact_export_html(project_dir)
+
+        self.assertNotIn(">Hie<", html)
+        self.assertIn(">SCHEDULE<", html)
+
     def test_exact_export_ignores_stale_unedited_text_state(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_dir = Path(temp_dir)

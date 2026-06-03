@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest import mock
 
+from brochure_maker import exact_browser_qa
 from brochure_maker.exact_browser_qa import write_browser_qa
 
 
@@ -86,21 +87,96 @@ class TestExactBrowserQA(unittest.TestCase):
             self.assertTrue(qa["assertions"]["logo_replacement_roundtrip_preserved"])
             self.assertTrue(qa["assertions"]["map_replacement_roundtrip_preserved"])
             self.assertTrue(qa["assertions"]["ocr_fallback_text_hidden_until_edit"])
+            self.assertTrue(qa["assertions"]["structured_cover_title_targets_semantic"])
             self.assertTrue(qa["assertions"]["export_has_expected_pages"])
             self.assertTrue(qa["assertions"]["export_has_no_editor_chrome"])
             self.assertTrue(qa["assertions"]["state_roundtrip_preserved"])
             self.assertTrue(qa["assertions"]["clean_export_preserves_edited_text"])
             self.assertTrue(qa["assertions"]["clean_export_preserves_global_colour"])
             self.assertTrue(qa["assertions"]["typed_text_font_preserved"])
+            self.assertTrue(qa["assertions"]["edited_text_fits_after_roundtrip"])
             self.assertTrue(qa["assertions"]["source_preserved_pages_have_no_giant_interactive_hotspots"])
             self.assertTrue(qa["interactions"]["accepted"])
             self.assertTrue(qa["interactions"]["nonDestructive"])
+            self.assertTrue(qa["interactions"]["editedTextFitsBox"])
             self.assertEqual(qa["interactions"]["targetSaveId"], "exact-page1-text1")
             self.assertEqual(qa["interactions"]["imageProbeTargetSaveId"], "exact-page1-image1")
             self.assertEqual(qa["interactions"]["logoProbeTargetSlotId"], "source-logo-1")
             self.assertEqual(qa["interactions"]["mapProbeTargetSaveId"], "exact-page1-map1")
             self.assertFalse((project_dir / "editor_state.json").exists())
             self.assertEqual(qa["blockers"], [])
+
+    def test_interaction_probe_skips_page_one_noisy_ocr_text(self):
+        html = """
+        <html><body>
+          <main>
+            <div class="exact-page" id="page1" data-page-num="1">
+              <p class="pdf-text exact-ocr-text" contenteditable="true"
+                 data-save-id="exact-page1-text1"
+                 data-typography-role="body"
+                 data-ocr-fallback="true"
+                 data-font-size="341.32px"
+                 data-plain-text="Hie">Hie</p>
+            </div>
+            <div class="exact-page" id="page2" data-page-num="2">
+              <p class="pdf-text" contenteditable="true"
+                 data-save-id="exact-page2-title"
+                 data-typography-role="cover-title">Other title</p>
+            </div>
+          </main>
+        </body></html>
+        """
+
+        target = exact_browser_qa._interaction_text_target(html)
+
+        self.assertEqual(target["save_id"], "exact-page2-title")
+
+    def test_export_text_fit_audit_rejects_nowrap_overflow(self):
+        audit = exact_browser_qa._export_text_fit_audit(
+            {
+                "save_id": "exact-page1-text1",
+                "style": "position:absolute;width:441px;font-size:341.32px;line-height:358.39px;white-space:nowrap",
+                "text": "QA Browser Title 725",
+            }
+        )
+
+        self.assertFalse(audit["accepted"])
+        self.assertIn("Edited text is wider than its nowrap text box", audit["blockers"])
+
+    def test_export_text_fit_audit_accepts_fitted_nowrap_text(self):
+        audit = exact_browser_qa._export_text_fit_audit(
+            {
+                "save_id": "exact-page1-text1",
+                "style": "position:absolute;width:441px;font-size:24px;line-height:28px;white-space:nowrap",
+                "text": "QA Browser Title 725",
+            }
+        )
+
+        self.assertTrue(audit["accepted"])
+
+    def test_editor_summary_flags_cover_title_mapped_to_noisy_ocr_logo_text(self):
+        html = """
+        <html><body>
+          <aside class="exact-fields-panel">
+            <textarea data-exact-field="coverTitle" data-targets="exact-page1-text1">Hie</textarea>
+          </aside>
+          <main>
+            <div class="exact-page" id="page1" data-page-num="1" data-picture-layout="editable">
+              <p class="pdf-text exact-ocr-text" contenteditable="true"
+                 data-save-id="exact-page1-text1"
+                 data-typography-role="body"
+                 data-ocr-fallback="true"
+                 data-font-size="341.32px"
+                 data-plain-text="Hie">Hie</p>
+            </div>
+          </main>
+        </body></html>
+        """
+
+        summary = exact_browser_qa._editor_summary(html, expected_pages=1)
+
+        self.assertEqual(summary["noisyCoverTitleTargetCount"], 1)
+        self.assertEqual(summary["noisyCoverTitleTargets"], ["exact-page1-text1"])
 
     def test_write_browser_qa_rejects_hidden_original_mode_image_slots_and_empty_cover(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -310,6 +386,8 @@ class TestExactBrowserQA(unittest.TestCase):
                             "image_replacement_roundtrip_preserved": True,
                             "logo_replacement_roundtrip_preserved": True,
                             "map_replacement_roundtrip_preserved": True,
+                            "edited_text_fits_after_roundtrip": True,
+                            "structured_cover_title_targets_semantic": True,
                         },
                     }
                 ),
