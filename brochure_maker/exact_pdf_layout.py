@@ -6627,18 +6627,26 @@ def _build_amenity_defs(entries: list[dict[str, Any]]) -> list[tuple[str, str, s
 
 
 def _is_noisy_amenity_value(value: str) -> bool:
-    """Reject letter-spacing fragments (e.g. "E S", "O — T", "W I T H") that get
-    grouped as amenity labels. A real amenity has at least one multi-letter word,
-    so values whose tokens are all single characters are noise. Genuine short
-    amenities like "Gym", "EV" or "Bar" are kept (they contain a multi-char token).
+    """Reject text that should not become an amenity label.
+
+    Mirrors the control-quality critic's noise definition so extraction never
+    emits an amenity the critic will reject: letter-spacing fragments ("E S",
+    "O — T"), too-short labels, and short all-caps fragments ("LOOR", "INT")
+    that are word pieces split out of body/heading text rather than real
+    amenities.
     """
+    first_line = next((line.strip() for line in str(value or "").splitlines() if line.strip()), "")
     tokens = re.findall(r"[A-Za-z0-9]+", value or "")
     if not tokens:
         return True
-    compact = "".join(tokens)
-    if len(compact) <= 2:
+    if all(len(token) == 1 for token in tokens):
         return True
-    return all(len(token) == 1 for token in tokens)
+    compact = re.sub(r"[^A-Za-z0-9]+", "", first_line)
+    if len(compact) <= 3:
+        return True
+    if re.fullmatch(r"[A-Z]{1,4}(?:\s+[A-Z]{1,4}){0,2}", first_line) and len(compact) <= 8:
+        return True
+    return False
 
 
 def _infer_amenity_defs(entries: list[dict[str, Any]]) -> list[tuple[str, str, str, dict[str, Any] | None, list[dict[str, Any]]]]:
@@ -6650,6 +6658,8 @@ def _infer_amenity_defs(entries: list[dict[str, Any]]) -> list[tuple[str, str, s
             entry = group[0]
             value = "\n".join(str(item.get("plain") or "").strip() for item in group if str(item.get("plain") or "").strip())
             if _is_noisy_amenity_value(value):
+                continue
+            if str(entry.get("typography_role") or "") in {"cover-title", "section-heading"}:
                 continue
             compact = _compact_text(value)
             if compact in seen:
@@ -6664,6 +6674,8 @@ def _infer_amenity_defs(entries: list[dict[str, Any]]) -> list[tuple[str, str, s
             entry = group[0]
             value = "\n".join(str(item.get("plain") or "").strip() for item in group if str(item.get("plain") or "").strip())
             if _is_noisy_amenity_value(value):
+                continue
+            if str(entry.get("typography_role") or "") in {"cover-title", "section-heading"}:
                 continue
             compact = _compact_text(value)
             if compact in seen:
