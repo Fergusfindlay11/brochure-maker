@@ -6626,6 +6626,21 @@ def _build_amenity_defs(entries: list[dict[str, Any]]) -> list[tuple[str, str, s
     return _infer_amenity_defs(entries)
 
 
+def _is_noisy_amenity_value(value: str) -> bool:
+    """Reject letter-spacing fragments (e.g. "E S", "O — T", "W I T H") that get
+    grouped as amenity labels. A real amenity has at least one multi-letter word,
+    so values whose tokens are all single characters are noise. Genuine short
+    amenities like "Gym", "EV" or "Bar" are kept (they contain a multi-char token).
+    """
+    tokens = re.findall(r"[A-Za-z0-9]+", value or "")
+    if not tokens:
+        return True
+    compact = "".join(tokens)
+    if len(compact) <= 2:
+        return True
+    return all(len(token) == 1 for token in tokens)
+
+
 def _infer_amenity_defs(entries: list[dict[str, Any]]) -> list[tuple[str, str, str, dict[str, Any] | None, list[dict[str, Any]]]]:
     sections = _amenity_icon_section_candidates(entries)
     defs: list[tuple[str, str, str, dict[str, Any] | None, list[dict[str, Any]]]] = []
@@ -6634,6 +6649,8 @@ def _infer_amenity_defs(entries: list[dict[str, Any]]) -> list[tuple[str, str, s
         for group in section["groups"]:
             entry = group[0]
             value = "\n".join(str(item.get("plain") or "").strip() for item in group if str(item.get("plain") or "").strip())
+            if _is_noisy_amenity_value(value):
+                continue
             compact = _compact_text(value)
             if compact in seen:
                 continue
@@ -6646,6 +6663,8 @@ def _infer_amenity_defs(entries: list[dict[str, Any]]) -> list[tuple[str, str, s
         for group in _amenity_feature_groups_without_heading(entries):
             entry = group[0]
             value = "\n".join(str(item.get("plain") or "").strip() for item in group if str(item.get("plain") or "").strip())
+            if _is_noisy_amenity_value(value):
+                continue
             compact = _compact_text(value)
             if compact in seen:
                 continue
@@ -7198,6 +7217,16 @@ def _looks_like_contact_block_text(value: str) -> bool:
     if "@" in text or CONTACT_PHONE_RE.search(text):
         return True
     if _looks_like_contact_name_title_line(text):
+        return True
+    # Letter-spaced caps name lines (e.g. "W I L L  N E W T O N") that Poppler
+    # emits as many single-glyph tokens. Without this they escape the contact
+    # block and render on top of the semantic contact overlay (text doubling).
+    spaced_tokens = text.split()
+    if (
+        len(spaced_tokens) >= 4
+        and text == text.upper()
+        and all(len(token) <= 2 and token.isalpha() for token in spaced_tokens)
+    ):
         return True
     if re.fullmatch(r"[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*){0,3}", text):
         return True
